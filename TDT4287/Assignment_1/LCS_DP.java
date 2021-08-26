@@ -1,4 +1,7 @@
-import java.util.Scanner;
+package Assignment_1;
+
+import java.util.*;
+import java.util.stream.Collectors;
 
 class LCS_DP{
 
@@ -14,7 +17,7 @@ class LCS_DP{
         String str2 = sc.nextLine();
         System.out.println("Strings are: '" + str1 + "' and '" + str2 + "'");
         */
-        // Problem 1: LCS(ATTCGGTTA, TAGTGATG) - TTGT
+        // Problem 1: LCS(ATTCGGTTA, TAGTGATG) = TTGT, ATGT, TGTA
         String str1 = "ATTCGGTTA";
         String str2 = "TAGTGATG";
         int[][] matrix = new int[str1.length()+1][str2.length()+1];
@@ -28,7 +31,7 @@ class LCS_DP{
         }
         System.out.println("Initialized:\n" + lcs.matrixToString(str2, str1, matrix));
 
-        // i is row, j is column
+        // i is rows, j is columns
         for (int i = 1; i < matrix.length; i++) {
             for (int j = 1; j < matrix[0].length; j++) {
                 if(str1.charAt(i-1) == str2.charAt(j-1)){
@@ -42,6 +45,9 @@ class LCS_DP{
         System.out.println("Solved:\n" + lcs.matrixToString(str2, str1, matrix));
         
         System.out.println("LCS is " + lcs.getLCS(str1, str2, matrix));
+
+        List<String> listWithoutDuplicates = lcs.getEveryLCS(str1, str2, matrix.length - 1, matrix[0].length - 1, matrix).stream().distinct().collect(Collectors.toList());
+        System.out.println("Every LCS is: " + listWithoutDuplicates.toString());
 
     }
 
@@ -65,7 +71,8 @@ class LCS_DP{
             return int3;
         }
     }
-    // Get the LCS without using a backtrack matrix
+    // Get the LCS without using a backtracking matrix
+    // This sorta uses the same concept as a backtracking matrix, just without the matrix, not sure if you were looking for a different solution.
     public String getLCS(String str1, String str2, int[][] solvedMatrix){
         String lcs = "";
         int currentY = solvedMatrix.length - 1;
@@ -85,17 +92,52 @@ class LCS_DP{
             // If above is smaller than current (not sure if this one happens either)
             else if(solvedMatrix[currentY][currentX] > solvedMatrix[currentY-1][currentX]){
                 lcs = str1.charAt(currentY) + lcs;
-                currentY-= 1;
+                currentY -= 1;
             }
             else{
-                currentY-=1;
+                currentY -= 1;
             }
         }
         return lcs;
     }
-    public String[] getEveryLCS(String str1, String str2, int[][] solvedMatrix){
-        String[] everyLCS = {"who", "knows"};
-        return everyLCS;
+    // Heavily inspired by https://www.techiedelight.com/longest-common-subsequence-finding-lcs/
+    public ArrayList<String> getEveryLCS(String str1, String str2, int currY, int currX, int[][] solvedMatrix){
+        // If we reach the end of either str
+        if(currY == 0 || currX == 0){
+            ArrayList<String> emptyArr = new ArrayList<String>();
+            emptyArr.add("");
+            return emptyArr;
+        }
+
+        // If the last character of strs match
+        if(str1.charAt(currY-1) == str2.charAt(currX-1)){
+            ArrayList<String> lcs = getEveryLCS(str1, str2, currY-1, currX-1, solvedMatrix);
+            // Add the matching character to every subsequence
+            for (int i = 0; i < lcs.size(); i++) {
+                lcs.set(i, lcs.get(i) + str1.charAt(currY-1));
+            }
+            return lcs;
+        }
+
+        else{
+            // If above is higher than left
+            if(solvedMatrix[currY-1][currX] > solvedMatrix[currY][currX-1]){
+                return getEveryLCS(str1, str2, currY-1, currX, solvedMatrix);
+            }
+            // If left is higher than above
+            else if(solvedMatrix[currY][currX-1] > solvedMatrix[currY-1][currX]){
+                return getEveryLCS(str1, str2, currY, currX-1, solvedMatrix);
+            }
+            // If left and above are equal
+            else{
+                ArrayList<String> above = getEveryLCS(str1, str2, currY-1, currX, solvedMatrix);
+                ArrayList<String> left = getEveryLCS(str1, str2, currY, currX-1, solvedMatrix);
+            
+                above.addAll(left);
+                
+                return above;
+            }
+        }
     }
 
     public String matrixToString(String cols, String rows, int[][] matrix){
