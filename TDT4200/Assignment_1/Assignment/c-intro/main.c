@@ -17,7 +17,7 @@ typedef struct{
     unsigned char r;
     unsigned char g;
     unsigned char b;
-// unsigned char a;
+    unsigned char a;
 } pixel;
 
 int main(int argc, char** argv)
@@ -32,6 +32,7 @@ int main(int argc, char** argv)
     unsigned char* char_pixels_2 = stbi_load(argv[2], &width, &height, &channels, STBI_rgb_alpha);
 
     printf("height:%d, width: %d\n", height, width);
+    printf("char pixels 1: %c, 2: %c\n", *char_pixels_1, *char_pixels_2);
     if (char_pixels_1 == NULL || char_pixels_2 == NULL)
     {
         printf("if was true");
@@ -46,16 +47,20 @@ int main(int argc, char** argv)
     pixel* pixels_out = (pixel*)malloc(sizeof(pixel)*width*height);
 
     //TODO 4 - loop
-    printf("%c\n", char_pixels_1);
-    int i;
-    for (i = 0; i < sizeof(char_pixels_1); i++){ 
-        //printf("%d",i);
+    int i,j;
+    for (i = 0; i < height*width; i++){ 
+        pixels_out[i].r = (pixels_1[i].r + pixels_2[i].r)/2;
+        pixels_out[i].g = (pixels_1[i].g + pixels_2[i].g)/2;
+        pixels_out[i].b = (pixels_1[i].b + pixels_2[i].b)/2;
+        pixels_out[i].a = 255;
     }
 
-    stbi_write_png("output.png", width, height, STBI_rgb_alpha, char_pixels_1, sizeof(pixel) * width);
+    stbi_write_png("output.png", width, height, STBI_rgb_alpha, pixels_out, sizeof(pixel) * width);
 
     //TODO 5 - free
     free(pixels_out);
+    free(pixels_1);
+    free(pixels_2);
     printf("Ending");
     return 0;
 }
