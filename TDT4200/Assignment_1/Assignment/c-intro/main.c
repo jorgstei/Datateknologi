@@ -32,10 +32,9 @@ int main(int argc, char** argv)
     unsigned char* char_pixels_2 = stbi_load(argv[2], &width, &height, &channels, STBI_rgb_alpha);
 
     printf("height:%d, width: %d\n", height, width);
-    printf("char pixels 1: %c, 2: %c\n", *char_pixels_1, *char_pixels_2);
     if (char_pixels_1 == NULL || char_pixels_2 == NULL)
     {
-        printf("if was true");
+        printf("Could not load at least 1 of the 2 images, exiting.");
         exit(1);
     }
     
