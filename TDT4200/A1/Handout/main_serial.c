@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <math.h>
 #include "mpi.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -85,7 +86,7 @@ int main(int argc, char** argv)
 	if (pixels_in == NULL) {
 		exit(1);
 	}
-	printf("Image dimensions: %dx%d\n", in_width, in_height);
+	printf("Image dimensions: %dx%d with pixel size:%ld\n", in_width, in_height, sizeof(pixels_in));
 //TODO END
 
 
@@ -113,7 +114,7 @@ int main(int argc, char** argv)
 
 			float row = i * (in_height-1) / (float)out_height;
 			float col = j * (in_width-1) / (float)out_width;
-
+			//printf("Row: %f, Col: %f\n", row, col);
 			bilinear(pixels_in, row, col, &new_pixel, in_width, in_height);
 
 			local_out[i*out_width+j] = new_pixel;
