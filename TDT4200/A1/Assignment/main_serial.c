@@ -70,7 +70,6 @@ SEGVFunction( int sig_num)
 
 int main(int argc, char** argv)
 {
-	srand((unsigned int) time(NULL));
 	signal(SIGSEGV, SEGVFunction);
 	stbi_set_flip_vertically_on_load(true);
 	stbi_flip_vertically_on_write(true);
@@ -96,29 +95,26 @@ int main(int argc, char** argv)
 //TODO 2 - broadcast
 	if(rank == 0){
 		pixels_in = (pixel *) stbi_load(argv[1], &in_width, &in_height, &channels, STBI_rgb_alpha);
-		printf("Hello here is pixel size: %ld\n", sizeof(pixels_in));
 		if (pixels_in == NULL) {
 			exit(1);
 		}
 		printf("Image dimensions: %dx%d\n", in_width, in_height);
-
-		for(int dest_rank = 1; dest_rank < comm_size; dest_rank++){
-			printf("Process 0 is sending information to process %d\n", dest_rank);
-			MPI_Send(&pixels_in, 4, MPI_UNSIGNED_CHAR, dest_rank, 0, MPI_COMM_WORLD);
-			MPI_Send(&in_width, 1, MPI_INT, dest_rank, 0, MPI_COMM_WORLD);
-			MPI_Send(&in_height, 1, MPI_INT, dest_rank, 0, MPI_COMM_WORLD);
-		}
 	}
-	else{
-		printf("Process %d is attempting to receive information from process 0\n", rank);
-		MPI_Recv(&pixels_in, 4, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		MPI_Recv(&in_width, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		MPI_Recv(&in_height, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		printf("Process %d got info: width=%d, height=%d\n", rank, in_width, in_height);
+
+	MPI_Bcast(&in_width, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	//printf("P%d has in_width:%d\n", rank, in_width);
+
+	MPI_Bcast(&in_height, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	//printf("P%d has in_height:%d\n", rank, in_height);
+
+	if(rank != 0){
+		pixels_in = (pixel *) malloc(4*sizeof(char)*in_width*in_height);
 	}
 	
-	
+	MPI_Bcast(pixels_in, in_width*in_height*sizeof(pixel), MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+	//printf("P%d's first pixel in pixels_in: has RGBA:(%d,%d,%d,%d)\n", rank, pixels_in[0].r, pixels_in[0].g, pixels_in[0].b, pixels_in[0].a);
 
+	
 //TODO END
 
 
@@ -131,51 +127,56 @@ int main(int argc, char** argv)
 //TODO 3 - partitioning
 	int local_width = in_width;
 	int local_height = in_height/comm_size;
-	printf("P%d: Local width: %d and height: %d\n", rank, local_width, local_height);
+	//printf("P%d: Local width: %d and height: %d\n", rank, local_width, local_height);
 
 	int local_out_width = out_width;
 	int local_out_height = out_height/comm_size;
-	printf("P%d: Local out width: %d and height: %d\n", rank, local_out_width, local_out_height);
+	//printf("P%d: Local out width: %d and height: %d\n", rank, local_out_width, local_out_height);
 
 	pixel* local_out = (pixel *) malloc(sizeof(pixel) * local_out_width * local_out_height);
 //TODO END
 
 printf("Computing with P%d. Local width: %d, Local height: %d\n", rank, local_width, local_height);
 
-for(int i = 0; i < sizeof(pixels_in); i++){
-	printf("P%d with pixels_in rgb:(%d, %d, %d)\n", rank, pixels_in[i].r, pixels_in[i].g, pixels_in[i].b);
-}
 //TODO 4 - computation
-	for(int i= rank*local_out_height; i < (rank+1)*local_out_height; i++) {
-		printf("P%d with i:%d\n", rank, i);
+	for(int i = rank*local_out_height; i < (rank+1)*local_out_height; i++) {
 		for(int j = 0; j < local_out_width; j++) {
+			
 			pixel new_pixel;
-			//printf("P%d calculating rows and cols\n", rank);
-
-
+			/*
+			new_pixel.r = 85;
+			new_pixel.g = 85;
+			new_pixel.b = 235;
+			new_pixel.a = 255;
+			*/
 			float row = i * (in_height-1) / (float)out_height;
 			float col = j * (in_width-1) / (float)out_width;
-			//printf("Row: %f, Col: %f\n", row, col);
-			printf("PROCESS%d i: %d, j: %d\n", rank, i, j);
+
 			bilinear(pixels_in, row, col, &new_pixel, in_width, in_height);
-			printf("P%d done with bilinear for i: %d, j:%d, row: %f, col: %f. Produced RGBA: (%d, %d, %d, %d)\n", rank, i, j, row, col, new_pixel.r,  new_pixel.g,  new_pixel.b,  new_pixel.a);
-			local_out[i*out_width+j] = new_pixel;	
+			
+			local_out[(i-rank*local_out_height)*out_width+j] = new_pixel;
 		}
 	}
 //TODO END
+printf("P%d is done with computation\n", rank);
 pixel* pixels_out = NULL;
 if(rank==0){
-	printf("P0 is allocating memory for pixels_out, pixel has sizeof:%ld\n", sizeof(pixel));
+	printf("P0 is allocating memory for pixels_out\n");
 	pixels_out = malloc(sizeof(pixel)*out_width*out_height);
 }
 
 //TODO 5 - gather
-MPI_Gather(&local_out, sizeof(local_out), MPI_PACKED, pixels_out, sizeof(local_out), MPI_PACKED, 0, MPI_COMM_WORLD);
+MPI_Gather(local_out, local_out_height*local_out_width*sizeof(pixel), MPI_UNSIGNED_CHAR, pixels_out, local_out_height*local_out_width*sizeof(pixel), MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+printf("P%d is done gathering\n", rank);
 
 if(rank == 0){
-	printf("\nASDASDAS i am rank 0 in gather\n\n");
+	printf("\nWriting to output.png\n\n");
 	stbi_write_png("output.png", out_width, out_height, STBI_rgb_alpha, pixels_out, sizeof(pixel) * out_width);
+	free(pixels_out);
 }
+free(pixels_in);
+free(local_out);
+
 //TODO END
 
 //TODO 1 - init
