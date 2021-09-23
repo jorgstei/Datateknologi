@@ -5,8 +5,7 @@ layout(location=1) in vec3 colors;
 layout(location=2) uniform mat4 transform;
 layout(location=3) uniform float oscilator;
 
-out vec3 frag_color;
-out mat4 transform_out;
+out smooth vec3 frag_color;
 
 /*
     a, b, 0, c
@@ -19,7 +18,6 @@ void main()
     
     frag_color = colors;
     mat4 oscilating_matrix = transform;
-    oscilating_matrix[1][3] = oscilator;
-    transform_out = oscilating_matrix;
+    //oscilating_matrix[0][0] = oscilator;
     gl_Position = oscilating_matrix*vec4(positions, 1.0f);
 }

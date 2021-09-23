@@ -9,8 +9,8 @@ mod util;
 use glutin::event::{Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState::{Pressed, Released}, VirtualKeyCode::{self, *}};
 use glutin::event_loop::ControlFlow;
 
-const SCREEN_W: u32 = 800;
-const SCREEN_H: u32 = 600;
+const SCREEN_W: u32 = 1000;
+const SCREEN_H: u32 = 700;
 
 // == // Helper functions to make interacting with OpenGL a little bit prettier. You WILL need these! // == //
 // The names should be pretty self explanatory
@@ -122,7 +122,8 @@ fn main() {
         unsafe {
             gl::Enable(gl::DEPTH_TEST);
             gl::DepthFunc(gl::LESS);
-            gl::Enable(gl::CULL_FACE);
+            // Disabled face culling to allow us to see the triangles from the back aswell
+            //gl::Enable(gl::CULL_FACE);
             gl::Disable(gl::MULTISAMPLE);
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
@@ -214,27 +215,66 @@ fn main() {
             shader.program_id
         };
         
-        // Transformation matrix for vertex shader
-        unsafe {
-            let loc_of_transform = gl::GetUniformLocation(prog_id, "transform".as_ptr() as *const i8);
-            let transform: glm::Mat4 = glm::identity();
-            gl::UniformMatrix4fv(loc_of_transform, 1, gl::FALSE, transform.as_ptr());
-        }
+
         // Used to demonstrate keyboard handling -- feel free to remove
         let mut _arbitrary_number = 0.0;
 
         let first_frame_time = std::time::Instant::now();
         let mut last_frame_time = first_frame_time;
+
+
+        // Camera orientation and position variables
+        let mut camera_x: f32 = 0.0;
+        let mut camera_y: f32 = 0.0;
+        let mut camera_z: f32 = -2.0; // Initialized to -2 to do the initial translation
+        let mut camera_horizontal_rot: f32 = 0.0;
+        let mut camera_vertical_rot: f32 = 0.0;
+        let scaling_factor: f32 = 2.0;
+
         // The main rendering loop
+        let mut counter = 0;
+        let perspective: glm::Mat4 =glm::perspective(SCREEN_W as f32 / SCREEN_H as f32, 1.2, 1.0, 100.0);
         loop {
+            counter+=1;
+            if(counter % 100 == 0){
+                println!("xyz: ({}, {}, {}) | Horizontal angle: {}, sin: {}, cos: {} | | Vertical angle: {}, sin: {}, cos: {} |", camera_x, camera_y,camera_z, camera_horizontal_rot, camera_horizontal_rot.sin(), camera_horizontal_rot.cos(), camera_vertical_rot, camera_vertical_rot.sin(), camera_vertical_rot.cos());
+            }
             let now = std::time::Instant::now();
             let elapsed = now.duration_since(first_frame_time).as_secs_f32();
             let delta_time = now.duration_since(last_frame_time).as_secs_f32();
             last_frame_time = now;
             unsafe {
-                //let osc: f32 = elapsed.sin()/2.0;
-                //println!("{}", osc);
-                //let loc_of_oscilator = gl::GetUniformLocation(prog_id, "oscilator".as_ptr() as *const i8);
+                
+                let translate_by_camera_pos: glm::Mat4 = glm::mat4(
+                    1.0, 0.0, 0.0, camera_x, 
+                    0.0, 1.0, 0.0, camera_y, 
+                    0.0, 0.0, 1.0, camera_z, 
+                    0.0, 0.0, 0.0, 1.0 
+                );
+
+                let cos_theta = camera_horizontal_rot.cos();
+                let sin_theta = camera_horizontal_rot.sin();
+
+                let horizontal_rotation: glm::Mat4 = glm::mat4(
+                    cos_theta, 0.0, sin_theta, 0.0, 
+                    0.0, 1.0, 0.0, 0.0, 
+                    -sin_theta, 0.0, cos_theta, 0.0, 
+                    0.0, 0.0, 0.0, 1.0 
+                );
+
+                let cos_theta_vert = camera_vertical_rot.cos();
+                let sin_theta_vert = camera_vertical_rot.sin();
+                let vertical_rotation: glm::Mat4 = glm::mat4(
+                    1.0, 0.0, 0.0, 0.0, 
+                    0.0, cos_theta_vert, -sin_theta_vert, 0.0, 
+                    0.0, sin_theta_vert, cos_theta_vert, 0.0, 
+                    0.0, 0.0, 0.0, 1.0 
+                );
+
+                // Set angle so we can use it next frame
+
+                let combined_transformation = perspective*horizontal_rotation*vertical_rotation*translate_by_camera_pos;
+                gl::UniformMatrix4fv(2, 1, gl::FALSE, combined_transformation.as_ptr());
                 gl::Uniform1f(3, elapsed.sin()/2.0);
             }
             
@@ -243,11 +283,74 @@ fn main() {
             if let Ok(keys) = pressed_keys.lock() {
                 for key in keys.iter() {
                     match key {
+                        // x and z movement is controlled by WASD, y movement with space and left contro. Rotation with arrow keys
+                        // Since the rotation is also flipped (panning left corresponds to decreasing angle) we multiply the angle by -1
+                        VirtualKeyCode::W => {
+                            // We want to move straight ahead in the direction we're facing
+                            camera_z += delta_time*scaling_factor*(-1.0*camera_horizontal_rot).cos();
+                            camera_x += delta_time*scaling_factor*(-1.0*camera_horizontal_rot).sin();
+                            camera_y += delta_time*scaling_factor*camera_vertical_rot.sin();
+                        },
                         VirtualKeyCode::A => {
-                            _arbitrary_number += delta_time;
+                            // We want to move in the direction 90 degrees (or PI/2) to the left of where we're facing
+                            camera_z += delta_time*scaling_factor*(-1.0*(camera_horizontal_rot - std::f32::consts::PI/2.0)).cos();
+                            camera_x += delta_time*scaling_factor*(-1.0*(camera_horizontal_rot - std::f32::consts::PI/2.0)).sin();
+                        },
+                        VirtualKeyCode::S => {
+                            // We want to move in the direction 180 degrees (or 1 PI) from where we're facing
+                            camera_z += delta_time*scaling_factor*(-1.0*camera_horizontal_rot + std::f32::consts::PI).cos();
+                            camera_x += delta_time*scaling_factor*(-1.0*camera_horizontal_rot + std::f32::consts::PI).sin();
+                            camera_y += delta_time*scaling_factor*(-1.0*(camera_vertical_rot + std::f32::consts::PI/2.0)).sin();
+                            
                         },
                         VirtualKeyCode::D => {
-                            _arbitrary_number -= delta_time;
+                            // We want to move in the direction 90 degrees (or PI/2) to the right of where we're facing
+                            camera_z += delta_time*scaling_factor*(-1.0*(camera_horizontal_rot + std::f32::consts::PI/2.0)).cos();
+                            camera_x += delta_time*scaling_factor*(-1.0*(camera_horizontal_rot + std::f32::consts::PI/2.0)).sin();
+                        },
+                        // y controlled by space and ctrl
+                        // Honestly not 100% sure about these, but i think it works as intended, it becomes hard to conseptualize after a while
+                        VirtualKeyCode::Space => {
+                            camera_z -= delta_time*scaling_factor*(-camera_horizontal_rot).cos()*(-camera_vertical_rot).sin();
+                            camera_x -= delta_time*scaling_factor*(-camera_horizontal_rot).sin()*(-camera_vertical_rot).sin();
+                            camera_y -= delta_time*scaling_factor*(-1.0*camera_vertical_rot).cos();
+                        },
+                        VirtualKeyCode::LControl=> {
+                            camera_z += delta_time*scaling_factor*(-camera_horizontal_rot).cos()*(-camera_vertical_rot).sin();
+                            camera_x += delta_time*scaling_factor*(-camera_horizontal_rot).sin()*(-camera_vertical_rot).sin();
+                            camera_y += delta_time*scaling_factor*(-1.0*camera_vertical_rot).cos();
+                        },
+
+                        // Rotation horizontal and vertical controlled by arrow keys
+                        VirtualKeyCode::Left => {
+                            camera_horizontal_rot -= delta_time*scaling_factor;
+                        },
+                        VirtualKeyCode::Right => {
+                            camera_horizontal_rot += delta_time*scaling_factor;
+                        },
+                        VirtualKeyCode::Up => {
+                            camera_vertical_rot -= delta_time*scaling_factor;
+                        },
+                        VirtualKeyCode::Down => {
+                            camera_vertical_rot += delta_time*scaling_factor;
+                        },
+                        // Reset camera position and rotation
+                        VirtualKeyCode::R => {
+                            camera_z = -2.0;
+                            camera_x = 0.0;
+                            camera_y = 0.0;
+                            camera_horizontal_rot = 0.0;
+                            camera_vertical_rot = 0.0;
+
+                        },
+                        // Preset for seeing the differece between noperspective and smooth
+                        VirtualKeyCode::P => {
+                            camera_z = -0.70173496;
+                            camera_x = -0.5838481;
+                            camera_y = 1.1762283;
+                            camera_horizontal_rot = -0.43848413;
+                            camera_vertical_rot = -0.7772871;
+
                         },
                         _ => { }
                     }
