@@ -8,7 +8,7 @@ mod functions;
 fn main() {
     println!("Hello, world!");
     //printouts::run();
-    //vars::run();
+    vars::run();
     //arrays::run();
     functions::run();
 }

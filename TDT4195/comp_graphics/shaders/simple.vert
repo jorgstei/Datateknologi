@@ -18,6 +18,6 @@ void main()
     
     frag_color = colors;
     mat4 oscilating_matrix = transform;
-    //oscilating_matrix[0][0] = oscilator;
+    //oscilating_matrix[1][0] = oscilator;
     gl_Position = oscilating_matrix*vec4(positions, 1.0f);
 }
