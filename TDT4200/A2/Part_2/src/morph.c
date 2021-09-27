@@ -1,3 +1,5 @@
+// Compile: make main
+// Run: mpirun -np 4 ./main images/man9.jpg images/man10.jpg output_images/ 4 lines/lines-man9-man10.txt
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -259,9 +261,11 @@ void morphKernel(const SimpleFeatureLine *hSrcLines,
 {
     int size, rank;
     // TODO: Get world rank and world size
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     // TODO: Parallelize kernel to compute on correct indices.
-    for (int i = 0; i < imgHeightOrig; i++) {
+    for (int i = rank*imgHeightOrig/size; i < imgHeightOrig*(rank+1)/size; i++) {
         for (int j = 0; j < imgWidthOrig; j++) {
             pixel interColor;
             SimplePoint dest;
@@ -281,11 +285,12 @@ void morphKernel(const SimpleFeatureLine *hSrcLines,
 
             // color interpolation
             ColorInterPolate(&src, &dest, t, hSrcImgMap, hDstImgMap, &interColor);
-
-            hMorphMap[i * imgWidthOrig + j].r = interColor.r;
-            hMorphMap[i * imgWidthOrig + j].g = interColor.g;
-            hMorphMap[i * imgWidthOrig + j].b = interColor.b;
-            hMorphMap[i * imgWidthOrig + j].a = interColor.a;
+            //printf("[%d] Interpolated colors\n", rank);
+            hMorphMap[imgWidthOrig * (i - (imgWidthOrig/size * rank)) + j].r = interColor.r;
+            hMorphMap[imgWidthOrig * (i - (imgWidthOrig/size * rank)) + j].g = interColor.g;
+            hMorphMap[imgWidthOrig * (i - (imgWidthOrig/size * rank)) + j].b = interColor.b;
+            hMorphMap[imgWidthOrig * (i - (imgWidthOrig/size * rank)) + j].a = interColor.a;
+            //printf("[%d] Set values in morphmap\n", rank);
         }
     }
 }
@@ -293,9 +298,9 @@ void morphKernel(const SimpleFeatureLine *hSrcLines,
 void doMorph(const SimpleFeatureLine *hSrcLines, const SimpleFeatureLine *hDstLines, int numLines, float t) {
     
     // TODO: Get world rank and world size
-    int world_size = 1;
-    int world_rank = 0;
-
+    int world_size, world_rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
     ///////////////////////////////
     // CREATE INTERPOLATED LINES //
@@ -318,20 +323,30 @@ void doMorph(const SimpleFeatureLine *hSrcLines, const SimpleFeatureLine *hDstLi
             t
     );
     gettimeofday(&end, NULL);
-    printf("Morph time: %.2f seconds\n", WALLTIME(end)-WALLTIME(start));
+    printf("[%d] Morph time: %.2f seconds\n", world_rank,WALLTIME(end)-WALLTIME(start));
 
     //////////////////////////////////
     // WRITE OUT THE FINISHED IMAGE //
     //////////////////////////////////
 
-    // TODO: Get all of the image slices and merge them
-
+    // Allocate memory for the entire output image
+    pixel* image_pixels;
+    if(world_rank == 0){
+        image_pixels = malloc(sizeof(pixel) * imgWidthOrig * imgHeightOrig);
+    }
+    // Gather the morphMaps of each process and combine it into image_pixels
+    MPI_Gather(hMorphMap, sizeof(pixel) * imgWidthOrig * imgHeightOrig/world_size, MPI_BYTE, image_pixels , sizeof(pixel) * imgWidthOrig * imgHeightOrig/world_size, MPI_BYTE, 0 , MPI_COMM_WORLD);
+    
     // TODO: Rank 0 writes image to file
-    char rootFile[50] = {0};
-    sprintf(rootFile, "%s%.5f.png", outputFile, t);
-    imgWrite(rootFile, hMorphMap, imgWidthOrig, imgHeightOrig);
+    if(world_rank == 0){
+        char rootFile[50] = {0};
+        sprintf(rootFile, "%s%.5f.png", outputFile, t);
+        imgWrite(rootFile, image_pixels, imgWidthOrig, imgHeightOrig);
+        free(image_pixels);
+    }
 
     free(hMorphLines);
+    
 }
 
 //------------main function----------------------------
@@ -341,17 +356,17 @@ int main(int argc,char *argv[]){
     // MPI INITIALIZATION AND SETUP //
     //////////////////////////////////
     MPI_Init(&argc, &argv);
-    int world_size, world_rank;
     // TODO: Get world size and world rank
-    world_rank = 0;
-    world_size = 1;
+    int world_sz, world_rank;
+
+    MPI_Comm_size(MPI_COMM_WORLD, &world_sz);
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
     /////////////////////////////////////
     // ARGUMENT PARSING - DO NOT TOUCH //
     /////////////////////////////////////
     int steps;
     const char *stepsStr;
-
     if( world_rank == 0) {
         switch(argc){
             case 6:
@@ -402,10 +417,16 @@ int main(int argc,char *argv[]){
     MPI_Bcast(&b, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
     // TODO: Broadcast the remaining arguments 
-    
-    printf("[%d] Has received all arguments\n", world_rank);
-    printf("[%d] Knows that the dimensions of the images are %d x %d\n", world_rank, imgWidthOrig, imgHeightOrig);
-    printf("[%d] Knows that the morph consists of %d steps\n", world_rank, steps);
+    MPI_Bcast(&steps, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&imgWidthOrig, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&imgWidthDest, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&imgHeightOrig, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&imgHeightDest, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+
+    //printf("[%d] Has received all arguments\n", world_rank);
+    //printf("[%d] Knows that the dimensions of the images are %d x %d\n", world_rank, imgWidthOrig, imgHeightOrig);
+    //printf("[%d] Knows that the morph consists of %d steps\n", world_rank, steps);
 
 
     /////////////////////////////
@@ -419,31 +440,44 @@ int main(int argc,char *argv[]){
          SimpleFeatureLine **hLinePairs = loadLines(&numLines, linePath);
          hSrcLines = hLinePairs[0];
          hDstLines = hLinePairs[1];
-
          free(hLinePairs);
     }
 
     // TODO: Broadcast the number of lines so the other ranks know how much space
     // to allocate for their copies of the line pairs.
-    printf("[%d] Knows that there are %d line pairs\n", world_rank, numLines);
+    MPI_Bcast(&numLines, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    //printf("[%d] Knows that there are %d line pairs\n", world_rank, numLines);
 
     // TODO: Allocate space for the line pairs and image maps
-    printf("[%d] Has allocated space for %d line pairs\n", world_rank, numLines);
+    // SimpleFeatureLine contains 2 SimplePoints, which contain 2 doubles, x and y.
+    // Pixel is a struct containing 4 chars: r,g,b,a
+    if(world_rank != 0){
+        hSrcLines = malloc(sizeof(SimpleFeatureLine) * numLines);
+        hDstLines = malloc(sizeof(SimpleFeatureLine) * numLines);
+        hSrcImgMap = malloc(sizeof(pixel) * imgWidthOrig * imgHeightOrig);
+        hDstImgMap = malloc(sizeof(pixel) * imgWidthDest *imgHeightDest);
+        //printf("[%d] Has allocated space for %d line pairs\n", world_rank, numLines);
+    }
+    
 
     // TODO: Broadcast all line pairs
+    MPI_Bcast(hSrcLines, numLines*sizeof(SimpleFeatureLine), MPI_BYTE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(hDstLines, numLines *sizeof(SimpleFeatureLine), MPI_BYTE, 0, MPI_COMM_WORLD);
     printf("[%d] Has received %d line pairs\n", world_rank, numLines);
-
-    ////////////////////////////////
-    // TODO: Image Morphing 
-    ////////////////////////////////
+    //printf("[%d] Received src lines %f %f\n", world_rank, hSrcLines->startPoint.x, hSrcLines->startPoint.y);
+    //printf("[%d] Received dst lines %f %f\n", world_rank, hDstLines->startPoint.x, hDstLines->startPoint.y);
 
     // TODO: Broadcast image maps
+    MPI_Bcast(hSrcImgMap, imgWidthOrig*imgHeightOrig*sizeof(pixel), MPI_BYTE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(hDstImgMap, imgWidthDest*imgHeightDest*sizeof(pixel), MPI_BYTE, 0, MPI_COMM_WORLD);
+    printf("[%d] Has received source map with RGB:(%d, %d, %d)\n", world_rank, hSrcImgMap->r, hSrcImgMap->g, hSrcImgMap->b);
+    //printf("[%d] Has received destination map with RGB (%d, %d, %d)\n", world_rank, hDstImgMap->r, hDstImgMap->g, hDstImgMap->b);
+    
 
 
-    // Run steps with size t
-    // TODO: Rank 0 allocates space for entire output image.
     // All ranks allocate space for their respective image slice
-    hMorphMap = malloc(sizeof(pixel) * imgWidthOrig * imgHeightOrig);
+    hMorphMap = malloc(sizeof(pixel) * imgWidthOrig * imgHeightOrig/world_sz);
+    
 
     float stepSize = 1.0/steps;
     for (int i = 0; i < steps+1; i++) {
@@ -456,6 +490,7 @@ int main(int argc,char *argv[]){
     free(hSrcImgMap);
     free(hDstImgMap);
     // TODO: Free morphMap for rank 0
+    // Not sure why we only want to free morphmap for just rank 0 here, it's allocated for every process, so I assume this is a typo
     free(hMorphMap);
 
     MPI_Finalize();

@@ -342,6 +342,7 @@ void doMorph(const SimpleFeatureLine *hSrcLines, const SimpleFeatureLine *hDstLi
 int main(int argc,char *argv[]){
     int steps = 90;
     const char *stepsStr;
+    int asd = 30;
     switch(argc){
         case 6:
             inputFileOrig = argv[1];
