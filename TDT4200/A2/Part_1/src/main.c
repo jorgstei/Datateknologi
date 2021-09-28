@@ -146,14 +146,13 @@ int main(int argc, char **argv) {
 
     int num_border_rows = (kernelDims[options->kernelIndex] - 1 ) / 2;
     int my_image_height = rows_to_receive[world_rank];
-
+    
     // TODO: Make space for halo-exchange
+    my_image = newImage(image->width, my_image_height+2);
+    
     // ------------------------------------------------------------
     // This should include space for the rows that are to be exchanged both
     // at the top and at the bottom of each respective slice.
-    my_image = newImage(image->width, my_image_height);
-
-
 
     // Ternary operator
     // Every rank other than 0 are not senders and thus
@@ -168,7 +167,8 @@ int main(int argc, char **argv) {
     // starts. The topmost and bottom-most rows should not be written by the //
     // scatter operation                                                     //
     ///////////////////////////////////////////////////////////////////////////
-    pixel *my_image_slice = my_image->rawdata;
+    
+    pixel *my_image_slice = my_image->rawdata + my_image->width;
 
     MPI_Scatterv(image_send_buffer,        // Send Buffer
             bytes_to_transfer,             // Send Counts
@@ -180,11 +180,8 @@ int main(int argc, char **argv) {
             0,                             // Root
             MPI_COMM_WORLD);               // Communicator
 
-    ///////////////////////////////////////////////////
-    // TODO: implement time measurement from here    //
-    ///////////////////////////////////////////////////
-    double starttime = 0.0f;
-
+    double starttime = MPI_Wtime();
+    
     // Here we do the actual computation!
     // image->data is a 2-dimensional array of pixel which is accessed row
     // first ([y][x]) each pixel is a struct of 4 unsigned char for the red,
@@ -194,20 +191,47 @@ int main(int argc, char **argv) {
     size_t bytes_to_exchange = num_border_rows * sizeof(pixel) * my_image->width;
     for (unsigned int i = 0; i < options->iterations; i ++) {
 
-
-        ///////////////////////////
-        // TODO: BORDER EXCHANGE //
-        ///////////////////////////
+        if(world_rank % 2 == 0){
+            // Send first
+            if(world_rank == 0){
+                MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD);
+                MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            }
+            else if(world_rank == world_sz - 1){
+                MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD);
+                MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            }
+            else{
+                MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD);
+                MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD);
+                MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            }
+        }
+        else{
+            // Receive first
+            if(world_rank == world_sz - 1){
+                MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD); 
+            }
+            else{
+                MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD);
+                MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD);
+            }
+        }
 
         // Apply Kernel
-        applyKernel(processImage->data,
-                my_image->data,
-                my_image->width,
-                my_image->height,
-                kernels[options->kernelIndex],
-                kernelDims[options->kernelIndex],
-                kernelFactors[options->kernelIndex]
-                );
+        applyKernel(
+            processImage->data,
+            my_image->data,
+            my_image->width,
+            my_image->height,
+            kernels[options->kernelIndex],
+            kernelDims[options->kernelIndex],
+            kernelFactors[options->kernelIndex]
+        );
 
         swapImage(&processImage, &my_image);
 
@@ -221,7 +245,9 @@ int main(int argc, char **argv) {
     // to the starting location in each respective slice.              //
     /////////////////////////////////////////////////////////////////////
 
-    MPI_Gatherv(my_image->rawdata,         // Send Buffer
+    pixel* img_buf = my_image->rawdata + my_image->width;
+
+    MPI_Gatherv(img_buf,                   // Send Buffer
             bytes_to_transfer[world_rank], // Send Count
             MPI_BYTE,                      // Send Type
             image->rawdata,                // Recv Buffer
@@ -232,11 +258,7 @@ int main(int argc, char **argv) {
             MPI_COMM_WORLD);               // Communicator
 
 
-    //////////////////////////////////////////////
-    // TODO: implement time measurement to here //
-    //////////////////////////////////////////////
-    double spentTime = 0.0f;
-    printf("Time spent: %.3f seconds\n", spentTime);
+    printf("[%d] Time spent: %.3f seconds\n", world_rank, MPI_Wtime()-starttime);
 
 
     if ( world_rank == 0) {
