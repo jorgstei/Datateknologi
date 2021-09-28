@@ -11,7 +11,7 @@ OPTIONS *parse_args(int argc, char **argv)
    /*
     Parameter parsing, don't change this!
    */
-  unsigned int iterations = 5;
+  unsigned int iterations = 1;
   char *output = NULL;
   char *input = NULL;
   unsigned int kernelIndex = 2;
