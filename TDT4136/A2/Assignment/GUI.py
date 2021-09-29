@@ -1,6 +1,6 @@
 import pygame as pg;
 
-#from Astar import A_star_solver;
+from Astar import A_star_solver;
 from Map import Map_Obj;
 
 class GUI():
@@ -14,7 +14,6 @@ class GUI():
         self.map.set_cell_value(self.map.start_pos, 2, False)
         self.map.set_cell_value(self.map.goal_pos, 3, False)
 
-        
         # Tuple containing the number of cells in the grid in x- and y-direction
         self.nOfCells = (len(self.map.get_maps()[0][0]), len(self.map.get_maps()[0]))
 
@@ -26,6 +25,8 @@ class GUI():
 
         # Pixel size of border around cells in the grid
         self.border_size = 0
+
+        astar = A_star_solver(self.map)
 
     def run(self):
         pg.init()
