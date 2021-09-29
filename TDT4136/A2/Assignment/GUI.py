@@ -6,13 +6,13 @@ from Map import Map_Obj;
 class GUI():
     def __init__(self, task, window_size):
         # Tuple containing window size in x and y
-        self.task = int(task)
+        self.task = task
         # Set up our map object
-        self.map = Map_Obj()
-        self.map.fill_critical_positions(self.task)
+        self.map = Map_Obj(self.task)
         # Fill in start and goal pos
-        self.map.set_cell_value(self.map.start_pos, 2, False)
-        self.map.set_cell_value(self.map.goal_pos, 3, False)
+        self.map.set_cell_value(self.map.start_pos, 8, False)
+        self.map.set_cell_value(self.map.goal_pos, 9, False)
+        print("start, goal pos task task is ", self.map.start_pos, self.map.goal_pos, self.task, task)
 
         # Tuple containing the number of cells in the grid in x- and y-direction
         self.nOfCells = (len(self.map.get_maps()[0][0]), len(self.map.get_maps()[0]))
@@ -26,7 +26,8 @@ class GUI():
         # Pixel size of border around cells in the grid
         self.border_size = 0
 
-        astar = A_star_solver(self.map)
+        self.astar = A_star_solver(self.map)
+        
 
     def run(self):
         pg.init()
@@ -37,7 +38,7 @@ class GUI():
         vertical_cell_size = self.window_size[1] // self.nOfCells[1]
         
         
-
+        print("Len path:", len(self.astar.final_path))
         running = True
         while running:
             for event in pg.event.get():
@@ -48,11 +49,11 @@ class GUI():
             background = pg.Rect(0, 0, self.window_size[0], self.window_size[1])
             pg.draw.rect(surface, (50, 50, 50), background)
 
+            counter = 0
             for x in range(self.nOfCells[0]):
                 for y in range(self.nOfCells[1]):  
                     # Draw rectangles spaced apart by self.border_size
                     rect = pg.Rect(x*horizontal_cell_size+self.border_size, y*vertical_cell_size+self.border_size, horizontal_cell_size-2*self.border_size, vertical_cell_size-2*self.border_size)
-                    
                     
                     rgb = (255,255,255)
                     cell_val = self.map.get_cell_value((y,x))
@@ -62,16 +63,33 @@ class GUI():
                     elif(cell_val == 1):
                         rgb = (215,215,215)
                     elif(cell_val == 2):
-                        rgb = (255,0,255)
+                        rgb = (166,166,166)
                     elif(cell_val == 3):
-                        rgb = (0,128,255)
+                        rgb = (96,96,96)
                     elif(cell_val == 4):
-                        rgb = (255,255,0)
+                        rgb = (36,36,36)
+                    elif(cell_val == 8):
+                        rgb = (255,0,255)
+                    elif(cell_val == 9):
+                        rgb = (0,128,255)
+                    
+                    index = -1
+                    try:
+                        index = self.astar.final_path.index((x,y))
+                    except ValueError:
+                        pass
+                    
+                    if(index != -1 and index != len(self.astar.final_path)-1):
+                        #print(counter, len(self.astar.final_path))
+                        #if(index <= counter):
+                        rgb=(0,255,0)
+                        #counter = counter + 1
+
 
                     pg.draw.rect(surface, rgb, rect)
 
             pg.display.update()
-            clock.tick(10)
+            clock.tick(60)
     
     # Source: https://www.geeksforgeeks.org/find-number-closest-n-divisible-m/
     # It's purpose is to round the window size to the closest number to the user input which is divisible by the amount of cells in the map
@@ -100,8 +118,11 @@ if __name__ == '__main__':
     validTask = False
     while not validTask:
         task = input("What task are you solving?\n")
-        if(task == "1" or task == "2" or task == "3"):
+        task = int(task)
+        if(task > 0 and task < 5):
             validTask = True
+        else:
+            print("Only avaliable tasks are 1, 2, 3 and 4")
 
     gui = GUI(task, (650,800))
     gui.run()
