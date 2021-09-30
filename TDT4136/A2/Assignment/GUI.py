@@ -12,8 +12,7 @@ class GUI():
         # Fill in start and goal pos
         self.map.set_cell_value(self.map.start_pos, 8, False)
         self.map.set_cell_value(self.map.goal_pos, 9, False)
-        print("start, goal pos task task is ", self.map.start_pos, self.map.goal_pos, self.task, task)
-
+        
         # Tuple containing the number of cells in the grid in x- and y-direction
         self.nOfCells = (len(self.map.get_maps()[0][0]), len(self.map.get_maps()[0]))
 
@@ -32,7 +31,7 @@ class GUI():
     def run(self):
         pg.init()
         surface = pg.display.set_mode((self.window_size[0], self.window_size[1]))
-        pg.display.set_caption("A*")
+        pg.display.set_caption("A* Task " + str(self.task))
         clock = pg.time.Clock()
         horizontal_cell_size = self.window_size[0] // self.nOfCells[0]
         vertical_cell_size = self.window_size[1] // self.nOfCells[1]
@@ -40,6 +39,7 @@ class GUI():
         
         print("Len path:", len(self.astar.final_path))
         running = True
+        counter = 0
         while running:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -49,7 +49,10 @@ class GUI():
             background = pg.Rect(0, 0, self.window_size[0], self.window_size[1])
             pg.draw.rect(surface, (50, 50, 50), background)
 
-            counter = 0
+            counter += 1
+            if(counter > 40 + len(self.astar.history) + len(self.astar.final_path)):
+                counter = 0
+        
             for x in range(self.nOfCells[0]):
                 for y in range(self.nOfCells[1]):  
                     # Draw rectangles spaced apart by self.border_size
@@ -72,24 +75,35 @@ class GUI():
                         rgb = (255,0,255)
                     elif(cell_val == 9):
                         rgb = (0,128,255)
-                    
-                    index = -1
+
+
+                    index_of_matching_history_node = -1
                     try:
-                        index = self.astar.final_path.index((x,y))
+                        index_of_matching_history_node = self.astar.history.index((x,y))
+                        # Exits to except here if it can't match x and y to a valid path node
+                        if(index_of_matching_history_node != len(self.astar.history)-1 and index_of_matching_history_node <= counter):
+                            rgb=(113,156,170)
+                            
                     except ValueError:
                         pass
-                    
-                    if(index != -1 and index != len(self.astar.final_path)-1):
-                        #print(counter, len(self.astar.final_path))
-                        #if(index <= counter):
-                        rgb=(0,255,0)
-                        #counter = counter + 1
 
+                    index_of_matching_path_node = -1
+                    try:
+                        index_of_matching_path_node = self.astar.final_path.index((x,y))
+                        # Exits to except here if it can't match x and y to a valid path node
+                        if(index_of_matching_path_node != len(self.astar.final_path)-1 and index_of_matching_path_node <= counter - len(self.astar.history)):
+                            rgb=(0,255,0)
+                            
+                    except ValueError:
+                        pass
+
+                    
 
                     pg.draw.rect(surface, rgb, rect)
 
             pg.display.update()
-            clock.tick(60)
+            # Framerate
+            clock.tick(30)
     
     # Source: https://www.geeksforgeeks.org/find-number-closest-n-divisible-m/
     # It's purpose is to round the window size to the closest number to the user input which is divisible by the amount of cells in the map

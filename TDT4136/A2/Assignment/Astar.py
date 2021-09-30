@@ -108,6 +108,7 @@ class A_star_solver():
         self.map = self.map_obj.get_maps()[0]
         #map.print_map(map.get_maps()[0])
         self.final_path = []
+        self.history = []
 
         self.nodes = []
         # Create every valid node in map and store it in self.nodes
@@ -158,9 +159,11 @@ class A_star_solver():
             if(current.pos == self.end_node.pos):
                 print("Found end", current.to_string())
                 self.final_path = self.reconstruct_path(current)
+                self.history.pop(0)
                 print("Path:\n", self.final_path)
                 break
 
+            self.history.append(current.pos)
             self.prio_queue.remove_element(current)
             closed_list.append(current)
             

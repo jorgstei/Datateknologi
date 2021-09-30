@@ -38,7 +38,6 @@ class Map_Obj():
         return data, data_str
 
     def fill_critical_positions(self, task):
-        print("task in fill critical", task)
         """
         Fills the important positions for the current task. Given the task, the path to the correct map is set, and the
         start, goal and eventual end_goal positions are set.
