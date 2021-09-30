@@ -50,6 +50,7 @@ class PriorityQueue():
         self.queue = []
         self.eval = eval_func
 
+    # Add element to queue in it's correct place
     def add_element(self, element_to_add):
         # Insert element such that the queue stays in prioritized order
         if(len(self.queue) > 0):
@@ -67,7 +68,7 @@ class PriorityQueue():
             #print("Appended in else")
             self.queue.append(element_to_add)
             return True
-
+    # Remove element from queue
     def remove_element(self, element_to_remove):
         # Find element and remove it
         if(len(self.queue) == 0):
@@ -80,17 +81,18 @@ class PriorityQueue():
                     self.queue.pop(i)
                     return True
         return False
-    
+    # Check if node already is in the queue
     def element_exists_in_queue(self, element):
         for node in self.queue:
             if(node.pos == element.pos):
                 return True
         else:
             return False
-        
+    # Update priority queue such that it is in the correct order
     def reorder_queue(self):
         self.queue.sort(key=self.sortBy)
 
+    # Helper function for the inbuilt python sort
     def sortBy(self, obj):
         return obj.g_cost + self.eval(obj.pos, self.goal_pos)
 
@@ -107,7 +109,9 @@ class A_star_solver():
         self.map_obj = map
         self.map = self.map_obj.get_maps()[0]
         #map.print_map(map.get_maps()[0])
+        # Array that holds the final solution of the A*
         self.final_path = []
+        # Complete history of every node that has been opened by the algorithm
         self.history = []
 
         self.nodes = []
@@ -140,34 +144,31 @@ class A_star_solver():
                 if(is_neighbour):
                     node.add_edge(potential_neighbour, weight)
 
-        
-
-        
+        # Add start node to priority queue and set it's g_cost to 0
         self.prio_queue.add_element(self.start_node)
-        
-        self.prio_queue.reorder_queue()
         self.start_node.g_cost = 0
         
         
         #'''
-
+        # List to hold all nodes we have already opened (except those that update their g_cost by finding a better route)
         closed_list = []
         while(len(self.prio_queue.queue) != 0):
-
+            # Open the first node in the queue
             current = self.prio_queue.queue[0]
-
+            # If we reached end, reconstruct path and break
             if(current.pos == self.end_node.pos):
                 print("Found end", current.to_string())
                 self.final_path = self.reconstruct_path(current)
                 self.history.pop(0)
                 print("Path:\n", self.final_path)
                 break
-
+            # Add node to history and closed_list, and remove it from the prio queue
             self.history.append(current.pos)
             self.prio_queue.remove_element(current)
             closed_list.append(current)
             
             #print("Current node is: ", current.to_string())
+
             for edge in current.edges:
                     g_cost_of_edge = current.g_cost + edge.weight
                     # Check if this path is the most efficient way to get to the edge target so far
@@ -183,11 +184,13 @@ class A_star_solver():
 
 
                     #print("Node to add", edge.target.to_string())
+                    # Check if edge target is already opened
                     in_closed = -1
                     try:
                         in_closed = closed_list.index(edge.target)
                     except ValueError:
                         pass
+                    # If it's not already opened, add it to the queue
                     if(not self.prio_queue.element_exists_in_queue(edge.target) and in_closed == -1):
                         #print("Before add", self.prio_queue.to_string())
                         self.prio_queue.add_element(edge.target)
@@ -201,6 +204,7 @@ class A_star_solver():
     def reconstruct_path(self, goal_node):
         path = []
         current = goal_node
+        # Loop through each node from the goal node and add their prev_node to the array
         while(current.prev_node != None):
             path.insert(0, current.pos)
             current = current.prev_node

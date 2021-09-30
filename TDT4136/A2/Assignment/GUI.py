@@ -29,10 +29,12 @@ class GUI():
         
 
     def run(self):
+        # Pygame setup
         pg.init()
         surface = pg.display.set_mode((self.window_size[0], self.window_size[1]))
         pg.display.set_caption("A* Task " + str(self.task))
         clock = pg.time.Clock()
+        # Pixel size of each cell
         horizontal_cell_size = self.window_size[0] // self.nOfCells[0]
         vertical_cell_size = self.window_size[1] // self.nOfCells[1]
         
@@ -50,6 +52,7 @@ class GUI():
             pg.draw.rect(surface, (50, 50, 50), background)
 
             counter += 1
+            # Delay such that we don't redraw immediately after drawing the final path
             if(counter > 40 + len(self.astar.history) + len(self.astar.final_path)):
                 counter = 0
         
@@ -61,6 +64,7 @@ class GUI():
                     rgb = (255,255,255)
                     cell_val = self.map.get_cell_value((y,x))
                    
+                    # Set cell color based on what type of cell it is
                     if(cell_val == -1):
                         rgb = (211,33,45)
                     elif(cell_val == 1):
@@ -76,7 +80,7 @@ class GUI():
                     elif(cell_val == 9):
                         rgb = (0,128,255)
 
-
+                    # Draw a new history node for each frame
                     index_of_matching_history_node = -1
                     try:
                         index_of_matching_history_node = self.astar.history.index((x,y))
@@ -87,6 +91,7 @@ class GUI():
                     except ValueError:
                         pass
 
+                    # Draw a new final path node for each new frame after the full history path is drawn
                     index_of_matching_path_node = -1
                     try:
                         index_of_matching_path_node = self.astar.final_path.index((x,y))
