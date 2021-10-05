@@ -41,6 +41,7 @@ class GUI():
         
         print("Len path:", len(self.astar.final_path))
         running = True
+        run_speed = 20
         counter = 0
         while running:
             for event in pg.event.get():
@@ -51,9 +52,9 @@ class GUI():
             background = pg.Rect(0, 0, self.window_size[0], self.window_size[1])
             pg.draw.rect(surface, (50, 50, 50), background)
 
-            counter += 1
+            counter += run_speed
             # Delay such that we don't redraw immediately after drawing the final path
-            if(counter > 40 + len(self.astar.history) + len(self.astar.final_path)):
+            if(counter > 20*run_speed + len(self.astar.history) + len(self.astar.final_path)):
                 counter = 0
         
             for x in range(self.nOfCells[0]):
@@ -108,7 +109,7 @@ class GUI():
 
             pg.display.update()
             # Framerate
-            clock.tick(30)
+            clock.tick(60)
     
     # Source: https://www.geeksforgeeks.org/find-number-closest-n-divisible-m/
     # It's purpose is to round the window size to the closest number to the user input which is divisible by the amount of cells in the map
@@ -138,12 +139,12 @@ if __name__ == '__main__':
     while not validTask:
         task = input("What task are you solving?\n")
         task = int(task)
-        if(task > 0 and task < 5):
+        if(task > 0 and task < 6):
             validTask = True
         else:
             print("Only avaliable tasks are 1, 2, 3 and 4")
 
-    gui = GUI(task, (650,800))
+    gui = GUI(task, (800,800))
     gui.run()
 
     
