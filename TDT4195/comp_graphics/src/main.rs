@@ -99,7 +99,22 @@ unsafe fn VAO_setup(coords: &Vec<f32>, indices: &Vec<u32>, colors: &Vec<f32>, no
 
 unsafe fn update_node_transformations(node: &mut scene_graph::SceneNode, transformation_so_far: &glm::Mat4) {
     // Construct the correct transformation matrix
+    let mut trans:glm::Mat4 = glm::identity();
+    trans = transformation_so_far * trans;
+    trans = glm::translation(&-node.reference_point) * trans;
+    trans = glm::mat4(
+        1.0, 0.0, 0.0, 0.0, 
+        0.0, node.rotation[0].cos(), -node.rotation[0].sin(), 0.0, 
+        0.0, node.rotation[0].sin(), node.rotation[0].cos(), 0.0, 
+        0.0, 0.0, 0.0, 1.0 
+    ) * trans;
+    trans = glm::translation(&node.reference_point) * trans;
+
+    node.rotation = node.rotation + glm::vec3(0.1, 0.0, 0.0);
+    
+    println!("Rotation of node with {} children is {} {}", node.children.len(), node.rotation, node.rotation[0]);
     // Update the node's transformation matrix
+    node.current_transformation_matrix = trans;
     // Recurse
     for &child in &node.children {
         update_node_transformations(&mut *child, &node.current_transformation_matrix);
@@ -111,6 +126,8 @@ unsafe fn draw_scene(node: &scene_graph::SceneNode, view_projection_matrix: &glm
     if node.index_count > 0 {
         gl::BindVertexArray(node.vao_id);
         gl::DrawElements(gl::TRIANGLES, node.index_count, gl::UNSIGNED_INT, ptr::null());
+        // 0,0,0
+        //println!("Ref point for node with {} children is {}", node.children.len(), node.reference_point);
     }
     // Call draw_scene for each child node aswell
     for &child in &node.children {
@@ -229,8 +246,9 @@ fn main() {
         let helicopter_tail_rotor_vao_id = unsafe { VAO_setup(&helicopter.tail_rotor.vertices, &helicopter.tail_rotor.indices, &helicopter.tail_rotor.colors, &helicopter.tail_rotor.normals)};
         let mut helicopter_tail_rotor_node = SceneNode::from_vao(helicopter_tail_rotor_vao_id, helicopter.tail_rotor.indices.len() as i32);
 
-        //helicopter_tail_rotor_node.reference_point = glm::mat3[0.35, 2.3, 10.4];
         
+        helicopter_tail_rotor_node.reference_point = glm::vec3(0.35, 2.3, 10.4);
+                
         // Add relations between nodes
         helicopter_body_node.add_child(&helicopter_door_node);
         helicopter_body_node.add_child(&helicopter_main_rotor_node);
@@ -307,9 +325,11 @@ fn main() {
                     0.0, 0.0, 0.0, 1.0 
                 );
 
+                update_node_transformations(&mut root_node, &translate_by_camera_pos);
+
                 let combined_transformation = perspective*vertical_rotation*horizontal_rotation*translate_by_camera_pos;
                 gl::UniformMatrix4fv(2, 1, gl::FALSE, combined_transformation.as_ptr());
-                gl::Uniform1f(3, elapsed.sin()/2.0);
+                //gl::Uniform1f(3, elapsed.sin()/2.0);
             }
 
             // Handle keyboard input
