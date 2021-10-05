@@ -1,3 +1,5 @@
+// Compile: make
+// Run: mpirun -np 4 ./main ./before.bmp ./images/after.bmp
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -55,16 +57,16 @@ int main(int argc, char **argv) {
 
     MPI_Init(&argc, &argv);
 
-    int world_sz;
-    int world_rank;
+    int world_size;
+    int my_rank;
 
-    MPI_Comm_size(MPI_COMM_WORLD, &world_sz);
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
     OPTIONS my_options;
     OPTIONS *options = &my_options;
 
-    if ( world_rank == 0 ) {
+    if (my_rank == 0) {
         options = parse_args(argc, argv);
 
         if ( options == NULL )
@@ -76,7 +78,7 @@ int main(int argc, char **argv) {
 
     MPI_Bcast(options, sizeof(OPTIONS), MPI_BYTE, 0, MPI_COMM_WORLD);
 
-    if( world_rank > 0 ) {
+    if( my_rank > 0 ) {
         options->input = NULL;
         options->output = NULL;
     }
@@ -88,7 +90,7 @@ int main(int argc, char **argv) {
     image_t *image = &dummy;
     image_t *my_image;
 
-    if( world_rank == 0 ) {
+    if( my_rank == 0 ) {
         image = loadImage(options->input);
         if (image == NULL) {
             fprintf(stderr, "Could not load bmp image '%s'!\n", options->input);
@@ -97,7 +99,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    if ( world_rank == 0 ) {
+    if ( my_rank == 0 ) {
         printf("Apply kernel '%s' on image with %u x %u pixels for %u iterations\n",
                 kernelNames[options->kernelIndex],
                 image->width,
@@ -116,15 +118,15 @@ int main(int argc, char **argv) {
     //////////////////////////////////////////////////////////
     // Calculate how much of the image to send to each rank //
     //////////////////////////////////////////////////////////
-    int rows_to_receive[world_sz];
-    int bytes_to_transfer[world_sz];
-    int displacements[world_sz];
+    int rows_to_receive[world_size];
+    int bytes_to_transfer[world_size];
+    int displacements[world_size];
     displacements[0] = 0;
 
-    int rows_per_rank = image->height / world_sz;
-    int remainder_rows = image->height % world_sz;
+    int rows_per_rank = image->height / world_size;
+    int remainder_rows = image->height % world_size;
 
-    for(int i = 0; i < world_sz; i++)
+    for(int i = 0; i < world_size; i++)
     {
         int rows_this_rank = rows_per_rank;
 
@@ -145,10 +147,10 @@ int main(int argc, char **argv) {
 
 
     int num_border_rows = (kernelDims[options->kernelIndex] - 1 ) / 2;
-    int my_image_height = rows_to_receive[world_rank];
+    int my_image_height = rows_to_receive[my_rank];
     
     // TODO: Make space for halo-exchange
-    // Each local partition needs 1-2 extra rows to store the ghost pixels from their neighbours
+    // I allocate 2 extra rows for each process's image, which wastes 1 row on the first and last process, but the code becomes cleaner and simpler this way imo
     my_image = newImage(image->width, my_image_height+2);
     
     // ------------------------------------------------------------
@@ -159,7 +161,7 @@ int main(int argc, char **argv) {
     // Every rank other than 0 are not senders and thus
     // do not need to actually have anything in the send buffer. These
     // get their send buffer pointer set to NULL.
-    pixel *image_send_buffer = world_rank == 0 ? image->rawdata : NULL;
+    pixel *image_send_buffer = my_rank == 0 ? image->rawdata : NULL;
 
     ///////////////////////////////////////////////////////////////////////////
     // TODO: Update the recv buffer pointer.                                 //
@@ -168,19 +170,22 @@ int main(int argc, char **argv) {
     // starts. The topmost and bottom-most rows should not be written by the //
     // scatter operation                                                     //
     ///////////////////////////////////////////////////////////////////////////
-    
-    // We need to offset the send buffer by a row in order to accomodate the extra rows we gave my_image
-    pixel *my_image_slice = my_image->rawdata + my_image->width;
 
-    MPI_Scatterv(image_send_buffer,        // Send Buffer
-            bytes_to_transfer,             // Send Counts
-            displacements,                 // Displacements
-            MPI_BYTE,                      // Send Type
-            my_image_slice,                // Recv Buffer
-            bytes_to_transfer[world_rank], // Recv Count
-            MPI_BYTE,                      // Recv Type
-            0,                             // Root
-            MPI_COMM_WORLD);               // Communicator
+    // Offset the rawdata pointer with the width of 1 row to skip the first row, so we can save it for the ghost-row
+    pixel *my_image_slice = my_image->width + my_image->rawdata;
+    // We divide the image into equally large slices (except for if we have a remainder in the divison, but still essentially the same size)
+    // and send one slice to each processor
+    MPI_Scatterv(
+        image_send_buffer,             // Send Buffer
+        bytes_to_transfer,             // Send Counts
+        displacements,                 // Displacements
+        MPI_BYTE,                      // Send Type
+        my_image_slice,                // Recv Buffer
+        bytes_to_transfer[my_rank],    // Recv Count
+        MPI_BYTE,                      // Recv Type
+        0,                             // Root
+        MPI_COMM_WORLD                 // Communicator
+    );               
 
     double starttime = MPI_Wtime();
     
@@ -190,6 +195,9 @@ int main(int argc, char **argv) {
     // blue and green colour channel
     image_t *processImage = newImage(image->width, my_image->height);
 
+    // Here we need to send the pixels that border each process' slice such that they all have sufficient information to apply the kernel
+    // The bottom and top slice (first and last process) only need one such row of pixels since they only have one neighbour
+    // but the rest of the processes require two ghost-rows containing the bordering pixels from their neighbours
     size_t bytes_to_exchange = num_border_rows * sizeof(pixel) * my_image->width;
     for (unsigned int i = 0; i < options->iterations; i ++) {
         // This is just to ensure that we can still run with just 1 process
@@ -198,55 +206,58 @@ int main(int argc, char **argv) {
             // We send and receive in this order because some implementations of MPI produce deadlocks
             // when f.ex. rank 0 sends, then receives, and rank 1 sends and then receives. 
             // This is because in some implementations send is blocking until it finds it's corresponding receive.
-            // Here I ensure that this doesn't happen by alternating the order in which we receive and send by utilizing world_rank % 2
+            // Here I ensure that this doesn't happen by alternating the order in which we receive and send by utilizing my_rank % 2
             // This results in r0: send->receive, r1: receive->send, r2: send->receive ...
 
-            if(world_rank % 2 == 0){
+            if(my_rank % 2 == 0){
                 // Send first
-                if(world_rank == 0){
-                    MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD);
-                    MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if(my_rank == 0){
+                    MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank + 1, 0, MPI_COMM_WORLD);
+                    MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 }
-                else if(world_rank == world_sz - 1){
-                    MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD);
-                    MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                else if(my_rank == world_sz - 1){
+                    MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank - 1, 0, MPI_COMM_WORLD);
+                    MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 }
                 else{
-                    MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD);
-                    MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD);
-                    MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank + 1, 0, MPI_COMM_WORLD);
+                    MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank - 1, 0, MPI_COMM_WORLD);
+                    MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 }
             }
+            // Send and receive top and bottom
             else{
                 // Receive first
-                if(world_rank == world_sz - 1){
-                    MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD); 
+                if(my_rank == world_sz - 1){
+                    MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank - 1, 0, MPI_COMM_WORLD); 
                 }
                 else{
-                    MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank + 1, 0, MPI_COMM_WORLD);
-                    MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, world_rank - 1, 0, MPI_COMM_WORLD);
+                    MPI_Recv(my_image->data[my_image->height - 1], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Recv(my_image->data[0], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Send(my_image->data[my_image->height - 2], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank + 1, 0, MPI_COMM_WORLD);
+                    MPI_Send(my_image->data[1], sizeof(pixel) * my_image->width, MPI_BYTE, my_rank - 1, 0, MPI_COMM_WORLD);
                 }
             }
         }
 
         // Apply Kernel
         applyKernel(
-            processImage->data,                     // out data
-            my_image->data,                         // in data
-            my_image->width,                        // img width
-            my_image->height,                       // img height
-            kernels[options->kernelIndex],          // the kernel to apply to the img
-            kernelDims[options->kernelIndex],       // The dimensions of the kernel we are applying. The argument is just 1 integer, since only square kernels are supported
-            kernelFactors[options->kernelIndex]     // A float factor which we multiply by the rgb values after the kernel has been apllied.
-        );                                          // I personally struggled to see the impact of this factor though, even with values ranging from 0.001 to 100.0
+            processImage->data, // out
+            my_image->data, // in
+            my_image->width, // in-width
+            my_image->height, // in-height
+            kernels[options->kernelIndex], // kernel, see argument_utils.c to change kernelIndex
+            kernelDims[options->kernelIndex], // a single int i which describes the width and height of the kernel matrix. In other words, non-square kernels are not supported
+            kernelFactors[options->kernelIndex] // a factor which is multiplied to the RGB-values that result from the application of the kernel. 
+                                                // I honestly struggle to see the difference between a factor of 0.01 and 100.0 though, not sure what's up with that.
+        );
 
         swapImage(&processImage, &my_image);
 
-        // Synchonize processes by forcing them to wait for each other here
+        // Wait until all ranks have done their part before resuming
+        // Specifically, this pauses execution for every process that reaches this line until every other process in the communicator (in this case, MPI_COMM_WORLD) also reaches this line
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
@@ -259,7 +270,7 @@ int main(int argc, char **argv) {
     // Include an offset to prevent us from including ghost pixels in the actual image
     pixel* img_buf = my_image->rawdata + my_image->width;
     MPI_Gatherv(img_buf,                   // Send Buffer
-            bytes_to_transfer[world_rank], // Send Count
+            bytes_to_transfer[my_rank], // Send Count
             MPI_BYTE,                      // Send Type
             image->rawdata,                // Recv Buffer
             bytes_to_transfer,             // Recv Counts
@@ -269,7 +280,7 @@ int main(int argc, char **argv) {
             MPI_COMM_WORLD);               // Communicator
 
 
-    printf("[%d] Time spent: %.3f seconds\n", world_rank, MPI_Wtime()-starttime);
+    printf("[%d] Time spent: %.3f seconds\n", my_rank, MPI_Wtime()-starttime);
 
                         // Performance notes:               
     /*  Processes |    Kernel   |   Iterations  |   Image dim  |    Time(s) in 3 runs | (Rough average in case of multiple processes)
@@ -287,7 +298,7 @@ int main(int argc, char **argv) {
         Still, the single-process approach was by far the slowest, and so we did acheive a good perfomance gain, of up to 300%, by utilizing parallelism.
     */
 
-    if ( world_rank == 0) {
+    if (my_rank == 0) {
         //Write the image back to disk
         if (saveImage(image, options->output) < 1) {
             fprintf(stderr, "Could not save output to '%s'!\n", options->output);

@@ -65,10 +65,10 @@ class Map_Obj():
             end_goal_pos = goal_pos
             path_to_map = 'Samfundet_map_Edgar_full.csv'
         elif task == 5:
-            start_pos = [14, 18]
-            goal_pos = [6, 36]
-            end_goal_pos = [6, 7]
-            path_to_map = 'Samfundet_map_2.csv'
+            start_pos = [76, 7]
+            goal_pos = [67, 46]
+            end_goal_pos = goal_pos
+            path_to_map = 'Test_map_1.csv'
 
         return start_pos, goal_pos, end_goal_pos, path_to_map
 
