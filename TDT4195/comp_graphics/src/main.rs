@@ -97,41 +97,37 @@ unsafe fn VAO_setup(coords: &Vec<f32>, indices: &Vec<u32>, colors: &Vec<f32>, no
 
 unsafe fn update_node_transformations(node: &mut scene_graph::SceneNode, transformation_so_far: &glm::Mat4) {
     // Construct the correct transformation matrix
-    let mut trans:glm::Mat4 = glm::identity();
-    trans = transformation_so_far * trans;
-    trans = node.current_transformation_matrix * trans;
     // Translate to reference point
-    trans = glm::translation(&-node.reference_point) * trans;
+    let translation_to_ref = glm::translation(&-node.reference_point);
     // Rotate around x
-    trans = glm::mat4(
+    let rotate_x = glm::mat4(
         1.0, 0.0, 0.0, 0.0, 
         0.0, node.rotation[0].cos(), -node.rotation[0].sin(), 0.0, 
         0.0, node.rotation[0].sin(), node.rotation[0].cos(), 0.0, 
         0.0, 0.0, 0.0, 1.0 
-    ) * trans;
+    );
     // Rotate around y
-    trans = glm::mat4(
+    let rotate_y = glm::mat4(
         node.rotation[1].cos(), 0.0, node.rotation[1].sin(), 0.0, 
         0.0, 1.0, 0.0, 0.0, 
         -node.rotation[1].sin(), 0.0, node.rotation[1].cos(), 0.0, 
         0.0, 0.0, 0.0, 1.0 
-    ) * trans;
+    );
     // Rotate around z
-    trans = glm::mat4(
+    let rotate_z = glm::mat4(
         node.rotation[2].cos(), -node.rotation[2].sin(), 0.0, 0.0, 
         node.rotation[2].sin(), node.rotation[2].cos(), 0.0, 0.0, 
         0.0, 0.0, 1.0, 0.0, 
         0.0, 0.0, 0.0, 1.0 
-    ) * trans;
+    );
     // Translate back
-    trans = glm::translation(&node.reference_point) * trans;
+    let translation_back = glm::translation(&node.reference_point);
 
-    node.rotation = node.rotation + glm::vec3(0.05, 0.05, 0.02);
+    let translate_position = glm::translation(&glm::vec3(node.position[0], node.position[1], node.position[2]));
     
     //println!("Rotation of node with {} children is {} {}", node.children.len(), node.rotation, node.rotation[0]);
     // Update the node's transformation matrix
-    node.current_transformation_matrix = trans;
-    // Update position based on transformation
+    node.current_transformation_matrix = transformation_so_far * translate_position * translation_back * rotate_x * rotate_y * rotate_z * translation_to_ref;
     
     // Recurse
     for &child in &node.children {
@@ -141,7 +137,9 @@ unsafe fn update_node_transformations(node: &mut scene_graph::SceneNode, transfo
 
 unsafe fn draw_scene(node: &scene_graph::SceneNode, view_projection_matrix: &glm::Mat4) {
     // Check if node is drawable, bind vao_id and draw
-    if node.index_count >= 0 {
+    if node.index_count > 0 {
+        gl::UniformMatrix4fv(2, 1, gl::FALSE, (view_projection_matrix * node.current_transformation_matrix).as_ptr());
+        gl::UniformMatrix4fv(5, 1, gl::FALSE, node.current_transformation_matrix.as_ptr());
         gl::BindVertexArray(node.vao_id);
         gl::DrawElements(gl::TRIANGLES, node.index_count, gl::UNSIGNED_INT, ptr::null());
         //println!("Ref point for node with {} children is {}", node.children.len(), node.reference_point);
@@ -262,7 +260,8 @@ fn main() {
         let rotation_scaling_factor: f32 = 1.5;
         // The main rendering loop
         let mut counter = 0;
-        let perspective: glm::Mat4 =glm::perspective(SCREEN_W as f32 / SCREEN_H as f32, 1.2, 1.0, 1000.0);
+        let perspective: glm::Mat4 = glm::perspective(SCREEN_W as f32 / SCREEN_H as f32, 1.2, 1.0, 1000.0);
+
         loop {
             counter+=1;
             if(counter % 100 == 0){
@@ -272,41 +271,6 @@ fn main() {
             let elapsed = now.duration_since(first_frame_time).as_secs_f32();
             let delta_time = now.duration_since(last_frame_time).as_secs_f32();
             last_frame_time = now;
-            unsafe {
-                
-                let translate_by_camera_pos: glm::Mat4 = glm::mat4(
-                    1.0, 0.0, 0.0, camera_x, 
-                    0.0, 1.0, 0.0, camera_y, 
-                    0.0, 0.0, 1.0, camera_z, 
-                    0.0, 0.0, 0.0, 1.0 
-                );
-
-                let cos_theta = camera_horizontal_rot.cos();
-                let sin_theta = camera_horizontal_rot.sin();
-
-                let horizontal_rotation: glm::Mat4 = glm::mat4(
-                    cos_theta, 0.0, sin_theta, 0.0, 
-                    0.0, 1.0, 0.0, 0.0, 
-                    -sin_theta, 0.0, cos_theta, 0.0, 
-                    0.0, 0.0, 0.0, 1.0 
-                );
-
-                let cos_theta_vert = camera_vertical_rot.cos();
-                let sin_theta_vert = camera_vertical_rot.sin();
-                
-                let vertical_rotation: glm::Mat4 = glm::mat4(
-                    1.0, 0.0, 0.0, 0.0, 
-                    0.0, cos_theta_vert, -sin_theta_vert, 0.0, 
-                    0.0, sin_theta_vert, cos_theta_vert, 0.0, 
-                    0.0, 0.0, 0.0, 1.0 
-                );
-
-                update_node_transformations(&mut lunar_node, &translate_by_camera_pos);
-
-                let combined_transformation =  perspective*vertical_rotation*horizontal_rotation*translate_by_camera_pos;
-                gl::UniformMatrix4fv(2, 1, gl::FALSE, combined_transformation.as_ptr());
-                //gl::Uniform1f(3, elapsed.sin()/2.0);
-            }
 
             // Handle keyboard input
             if let Ok(keys) = pressed_keys.lock() {
@@ -394,14 +358,43 @@ fn main() {
                 gl::ClearColor(0.76862745, 0.71372549, 0.94901961, 1.0); // moon raker, full opacity
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
                 
-                draw_scene(&root_node, 
-                    &glm::mat4(
-                    1.0, 0.0, 0.0, camera_x,
-                    0.0, 1.0, 0.0, camera_y,
-                    0.0, 0.0, 1.0, camera_z,
-                    0.0, 0.0, 0.0, 1.0
-                    )
+                let translate_by_camera_pos: glm::Mat4 = glm::mat4(
+                    1.0, 0.0, 0.0, camera_x, 
+                    0.0, 1.0, 0.0, camera_y, 
+                    0.0, 0.0, 1.0, camera_z, 
+                    0.0, 0.0, 0.0, 1.0 
                 );
+
+                let cos_theta = camera_horizontal_rot.cos();
+                let sin_theta = camera_horizontal_rot.sin();
+
+                let horizontal_rotation: glm::Mat4 = glm::mat4(
+                    cos_theta, 0.0, sin_theta, 0.0, 
+                    0.0, 1.0, 0.0, 0.0, 
+                    -sin_theta, 0.0, cos_theta, 0.0, 
+                    0.0, 0.0, 0.0, 1.0 
+                );
+
+                let cos_theta_vert = camera_vertical_rot.cos();
+                let sin_theta_vert = camera_vertical_rot.sin();
+                
+                let vertical_rotation: glm::Mat4 = glm::mat4(
+                    1.0, 0.0, 0.0, 0.0, 
+                    0.0, cos_theta_vert, -sin_theta_vert, 0.0, 
+                    0.0, sin_theta_vert, cos_theta_vert, 0.0, 
+                    0.0, 0.0, 0.0, 1.0 
+                );
+
+                let combined_transformation =  perspective*vertical_rotation*horizontal_rotation*translate_by_camera_pos;
+
+                helicopter_body_node.position = glm::vec3(5.0*elapsed, 10.0*elapsed, -30.0*elapsed);
+
+                helicopter_main_rotor_node.rotation = glm::vec3(0.0, elapsed * 3.0, 0.0);
+                helicopter_tail_rotor_node.rotation = glm::vec3(elapsed * 5.0, 0.0, 0.0);
+
+                update_node_transformations(&mut lunar_node, &glm::identity());
+
+                draw_scene(&lunar_node, &combined_transformation);
             }
 
             context.swap_buffers().unwrap();

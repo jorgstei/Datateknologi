@@ -5,6 +5,7 @@ layout(location=1) in vec3 colors;
 layout(location=2) uniform mat4 transform;
 //layout(location=3) uniform float oscilator;
 layout(location=4) in vec3 unit_vectors;
+layout(location=5) uniform mat4 transform2;
 
 out smooth vec3 frag_color;
 out vec3 normals;
@@ -17,9 +18,11 @@ out vec3 normals;
 */
 void main()
 { 
+    normals = normalize(mat3(transform2) * unit_vectors);
+    //normals = unit_vectors;
     frag_color = colors;
     mat4 oscilating_matrix = transform;
     //oscilating_matrix[1][0] = oscilator;
     gl_Position = oscilating_matrix*vec4(positions, 1.0f);
-    normals = unit_vectors;
+    
 }
