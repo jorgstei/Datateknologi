@@ -63,8 +63,6 @@ unsafe fn VAO_setup(coords: &Vec<f32>, indices: &Vec<u32>, colors: &Vec<f32>, no
         }
     }
 
-    //println!("{:?}", combined);
-    
     // Create, bind, fill and unbind VBO
     let mut vbo_id = 0;
     gl::GenBuffers(1, &mut vbo_id);
@@ -101,20 +99,40 @@ unsafe fn update_node_transformations(node: &mut scene_graph::SceneNode, transfo
     // Construct the correct transformation matrix
     let mut trans:glm::Mat4 = glm::identity();
     trans = transformation_so_far * trans;
+    trans = node.current_transformation_matrix * trans;
+    // Translate to reference point
     trans = glm::translation(&-node.reference_point) * trans;
+    // Rotate around x
     trans = glm::mat4(
         1.0, 0.0, 0.0, 0.0, 
         0.0, node.rotation[0].cos(), -node.rotation[0].sin(), 0.0, 
         0.0, node.rotation[0].sin(), node.rotation[0].cos(), 0.0, 
         0.0, 0.0, 0.0, 1.0 
     ) * trans;
+    // Rotate around y
+    trans = glm::mat4(
+        node.rotation[1].cos(), 0.0, node.rotation[1].sin(), 0.0, 
+        0.0, 1.0, 0.0, 0.0, 
+        -node.rotation[1].sin(), 0.0, node.rotation[1].cos(), 0.0, 
+        0.0, 0.0, 0.0, 1.0 
+    ) * trans;
+    // Rotate around z
+    trans = glm::mat4(
+        node.rotation[2].cos(), -node.rotation[2].sin(), 0.0, 0.0, 
+        node.rotation[2].sin(), node.rotation[2].cos(), 0.0, 0.0, 
+        0.0, 0.0, 1.0, 0.0, 
+        0.0, 0.0, 0.0, 1.0 
+    ) * trans;
+    // Translate back
     trans = glm::translation(&node.reference_point) * trans;
 
-    node.rotation = node.rotation + glm::vec3(0.1, 0.0, 0.0);
+    node.rotation = node.rotation + glm::vec3(0.05, 0.05, 0.02);
     
-    println!("Rotation of node with {} children is {} {}", node.children.len(), node.rotation, node.rotation[0]);
+    //println!("Rotation of node with {} children is {} {}", node.children.len(), node.rotation, node.rotation[0]);
     // Update the node's transformation matrix
     node.current_transformation_matrix = trans;
+    // Update position based on transformation
+    
     // Recurse
     for &child in &node.children {
         update_node_transformations(&mut *child, &node.current_transformation_matrix);
@@ -123,10 +141,9 @@ unsafe fn update_node_transformations(node: &mut scene_graph::SceneNode, transfo
 
 unsafe fn draw_scene(node: &scene_graph::SceneNode, view_projection_matrix: &glm::Mat4) {
     // Check if node is drawable, bind vao_id and draw
-    if node.index_count > 0 {
+    if node.index_count >= 0 {
         gl::BindVertexArray(node.vao_id);
         gl::DrawElements(gl::TRIANGLES, node.index_count, gl::UNSIGNED_INT, ptr::null());
-        // 0,0,0
         //println!("Ref point for node with {} children is {}", node.children.len(), node.reference_point);
     }
     // Call draw_scene for each child node aswell
@@ -145,9 +162,6 @@ fn main() {
     let cb = glutin::ContextBuilder::new()
         .with_vsync(true);
     let windowed_context = cb.build_windowed(wb, &el).unwrap();
-    // Uncomment these if you want to use the mouse for controls, but want it to be confined to the screen and/or invisible.
-    // windowed_context.window().set_cursor_grab(true).expect("failed to grab cursor");
-    // windowed_context.window().set_cursor_visible(false);
 
     // Set up a shared vector for keeping track of currently pressed keys
     let arc_pressed_keys = Arc::new(Mutex::new(Vec::<VirtualKeyCode>::with_capacity(10)));
@@ -190,44 +204,6 @@ fn main() {
             println!("GLSL\t: {}", util::get_gl_string(gl::SHADING_LANGUAGE_VERSION));
         }
 
-        // Friendly face culling is enabled warning
-        let vertices: Vec<f32> = vec![
-            0.3, 0.7, 0.0,
-            -0.3, 0.7, 0.0,
-            0.0, -0.7, 0.0,
-            
-            -0.9, -0.7, -0.3,
-            -0.5, -0.7, -0.3,
-            -0.7, 0.7, -0.3,
-            
-            0.5, -0.7, -0.6,
-            0.9, -0.7, -0.6,
-            0.7, 0.7, -0.6
-        ];
-
-        
-        let indices: Vec<u32> = vec![
-            0,1,2,
-            3,4,5,
-            6,7,8,
-            9,10,11,
-            12,13,14
-        ];
-
-        let colors: Vec<f32> = vec![
-            1.0, 0.3, 0.3,
-            0.0, 0.5, 0.5,
-            1.0, 1.0, 0.0,
-            
-            0.031, 0.227, 0.549,
-            0.309, 0.909, 0.682,
-            0.815, 0.945, 0.894,
-
-            0.5, 0.5, 0.5,
-            1.0, 1.0, 1.0,
-            0.0, 0.0, 0.0 
-        ];
-        
         //let vao_id = unsafe { VAO_setup(&vertices, &indices, &colors) };
         let mut root_node = SceneNode::new();
 
@@ -325,9 +301,9 @@ fn main() {
                     0.0, 0.0, 0.0, 1.0 
                 );
 
-                update_node_transformations(&mut root_node, &translate_by_camera_pos);
+                update_node_transformations(&mut lunar_node, &translate_by_camera_pos);
 
-                let combined_transformation = perspective*vertical_rotation*horizontal_rotation*translate_by_camera_pos;
+                let combined_transformation =  perspective*vertical_rotation*horizontal_rotation*translate_by_camera_pos;
                 gl::UniformMatrix4fv(2, 1, gl::FALSE, combined_transformation.as_ptr());
                 //gl::Uniform1f(3, elapsed.sin()/2.0);
             }
@@ -426,8 +402,6 @@ fn main() {
                     0.0, 0.0, 0.0, 1.0
                     )
                 );
-
-                
             }
 
             context.swap_buffers().unwrap();
