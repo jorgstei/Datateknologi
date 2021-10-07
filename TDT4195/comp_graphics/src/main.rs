@@ -6,8 +6,10 @@ use std::sync::{Mutex, Arc, RwLock};
 mod shader;
 mod util;
 mod mesh;
+mod toolbox;
 mod scene_graph;
 use scene_graph::SceneNode;
+
 
 use glutin::event::{Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState::{Pressed, Released}, VirtualKeyCode::{self, *}};
 use glutin::event_loop::ControlFlow;
@@ -174,6 +176,8 @@ fn main() {
     // Load meshes
     let lunar_surface = mesh::Terrain::load("./resources/lunarsurface.obj");
     let helicopter = mesh::Helicopter::load("./resources/helicopter.obj");
+    
+
     // Spawn a separate thread for rendering, so event handling doesn't block rendering
     let render_thread = thread::spawn(move || {
         // Acquire the OpenGL Context and load the function pointers. This has to be done inside of the rendering thread, because
@@ -204,30 +208,38 @@ fn main() {
 
         //let vao_id = unsafe { VAO_setup(&vertices, &indices, &colors) };
         let mut root_node = SceneNode::new();
+        const n_of_helicopters: usize = 5;
 
         let lunar_vao_id = unsafe { VAO_setup(&lunar_surface.vertices, &lunar_surface.indices, &lunar_surface.colors, &lunar_surface.normals) };
         let mut lunar_node = SceneNode::from_vao(lunar_vao_id, lunar_surface.indices.len() as i32);
         
-        let helicopter_body_vao_id = unsafe { VAO_setup(&helicopter.body.vertices, &helicopter.body.indices, &helicopter.body.colors, &helicopter.body.normals)};
-        let mut helicopter_body_node = SceneNode::from_vao(helicopter_body_vao_id, helicopter.body.indices.len() as i32);
-        
-        let helicopter_door_vao_id = unsafe { VAO_setup(&helicopter.door.vertices, &helicopter.door.indices, &helicopter.door.colors, &helicopter.door.normals)};
-        let mut helicopter_door_node = SceneNode::from_vao(helicopter_door_vao_id, helicopter.door.indices.len() as i32);
-        
-        let helicopter_main_rotor_vao_id = unsafe { VAO_setup(&helicopter.main_rotor.vertices, &helicopter.main_rotor.indices, &helicopter.main_rotor.colors, &helicopter.main_rotor.normals)};
-        let mut helicopter_main_rotor_node = SceneNode::from_vao(helicopter_main_rotor_vao_id, helicopter.main_rotor.indices.len() as i32);
-        
-        let helicopter_tail_rotor_vao_id = unsafe { VAO_setup(&helicopter.tail_rotor.vertices, &helicopter.tail_rotor.indices, &helicopter.tail_rotor.colors, &helicopter.tail_rotor.normals)};
-        let mut helicopter_tail_rotor_node = SceneNode::from_vao(helicopter_tail_rotor_vao_id, helicopter.tail_rotor.indices.len() as i32);
+        let mut body_nodes: Vec<scene_graph::Node> = Vec::new();
+        for i in 0..n_of_helicopters {
+            let helicopter_body_vao_id = unsafe { VAO_setup(&helicopter.body.vertices, &helicopter.body.indices, &helicopter.body.colors, &helicopter.body.normals)};
+            let mut helicopter_body_node = SceneNode::from_vao(helicopter_body_vao_id, helicopter.body.indices.len() as i32);
 
-        
-        helicopter_tail_rotor_node.reference_point = glm::vec3(0.35, 2.3, 10.4);
+            let helicopter_body_vao_id = unsafe { VAO_setup(&helicopter.body.vertices, &helicopter.body.indices, &helicopter.body.colors, &helicopter.body.normals)};
+            let mut helicopter_body_node = SceneNode::from_vao(helicopter_body_vao_id, helicopter.body.indices.len() as i32);
+            
+            let helicopter_door_vao_id = unsafe { VAO_setup(&helicopter.door.vertices, &helicopter.door.indices, &helicopter.door.colors, &helicopter.door.normals)};
+            let mut helicopter_door_node = SceneNode::from_vao(helicopter_door_vao_id, helicopter.door.indices.len() as i32);
+            
+            let helicopter_main_rotor_vao_id = unsafe { VAO_setup(&helicopter.main_rotor.vertices, &helicopter.main_rotor.indices, &helicopter.main_rotor.colors, &helicopter.main_rotor.normals)};
+            let mut helicopter_main_rotor_node = SceneNode::from_vao(helicopter_main_rotor_vao_id, helicopter.main_rotor.indices.len() as i32);
+            
+            let helicopter_tail_rotor_vao_id = unsafe { VAO_setup(&helicopter.tail_rotor.vertices, &helicopter.tail_rotor.indices, &helicopter.tail_rotor.colors, &helicopter.tail_rotor.normals)};
+            let mut helicopter_tail_rotor_node = SceneNode::from_vao(helicopter_tail_rotor_vao_id, helicopter.tail_rotor.indices.len() as i32);
+    
+            helicopter_tail_rotor_node.reference_point = glm::vec3(0.35, 2.3, 10.4);
+            // Add relationships between nodes
+            helicopter_body_node.add_child(&helicopter_door_node);
+            helicopter_body_node.add_child(&helicopter_main_rotor_node);
+            helicopter_body_node.add_child(&helicopter_tail_rotor_node);
+            lunar_node.add_child(&helicopter_body_node);
+    
+            body_nodes.push(helicopter_body_node);
+        }
                 
-        // Add relations between nodes
-        helicopter_body_node.add_child(&helicopter_door_node);
-        helicopter_body_node.add_child(&helicopter_main_rotor_node);
-        helicopter_body_node.add_child(&helicopter_tail_rotor_node);
-        lunar_node.add_child(&helicopter_body_node);
         root_node.add_child(&lunar_node);
 
         let prog_id = unsafe {
@@ -256,11 +268,15 @@ fn main() {
         let mut camera_z: f32 = -2.0; // Initialized to -2 to do the initial translation
         let mut camera_horizontal_rot: f32 = 0.0;
         let mut camera_vertical_rot: f32 = 0.0;
-        let scaling_factor: f32 = 5.0;
-        let rotation_scaling_factor: f32 = 1.5;
+        let scaling_factor: f32 = 50.0;
+        let rotation_scaling_factor: f32 = 2.0;
         // The main rendering loop
         let mut counter = 0;
         let perspective: glm::Mat4 = glm::perspective(SCREEN_W as f32 / SCREEN_H as f32, 1.2, 1.0, 1000.0);
+
+        // An array of bools that contains information about the state of each helicopters door
+        let mut opening_door: [bool; n_of_helicopters] = [false; n_of_helicopters];
+        let mut time_of_last_door_state_change = std::time::Instant::now();
 
         loop {
             counter+=1;
@@ -271,6 +287,8 @@ fn main() {
             let elapsed = now.duration_since(first_frame_time).as_secs_f32();
             let delta_time = now.duration_since(last_frame_time).as_secs_f32();
             last_frame_time = now;
+
+            
 
             // Handle keyboard input
             if let Ok(keys) = pressed_keys.lock() {
@@ -338,12 +356,31 @@ fn main() {
                         },
                         // Preset for seeing the differece between noperspective and smooth
                         VirtualKeyCode::P => {
-                            camera_z = -0.70173496;
-                            camera_x = -0.5838481;
-                            camera_y = 1.1762283;
-                            camera_horizontal_rot = -0.43848413;
-                            camera_vertical_rot = -0.7772871;
-
+                            camera_x = 17.518263;
+                            camera_y = -2.1809983;
+                            camera_z = -0.0000011129528;
+                            camera_horizontal_rot = 1.4908568;
+                            camera_vertical_rot = 0.0;
+                        },
+                        // Open door
+                        VirtualKeyCode::O => {
+                            unsafe{
+                                time_of_last_door_state_change = std::time::Instant::now();
+                                for i in 0..body_nodes.len() {
+                                    // Close
+                                    opening_door[i] = true;
+                                }     
+                            }
+                        },
+                        // Close door
+                        VirtualKeyCode::I => {
+                            unsafe{
+                                time_of_last_door_state_change = std::time::Instant::now();
+                                for i in 0..body_nodes.len() {
+                                    // Close
+                                    opening_door[i] = false;
+                                }     
+                            }
                         },
                         _ => { }
                     }
@@ -387,10 +424,45 @@ fn main() {
 
                 let combined_transformation =  perspective*vertical_rotation*horizontal_rotation*translate_by_camera_pos;
 
-                helicopter_body_node.position = glm::vec3(5.0*elapsed, 10.0*elapsed, -30.0*elapsed);
+                let path = toolbox::simple_heading_animation(elapsed);
+                //println!("Door is opening: {}", opening_door[0]);
+                for i in 0..body_nodes.len() {
+                    body_nodes[i].position = glm::vec3(path.x + (40*i) as f32, elapsed.sin() * 10.0 + (20*(i+1)) as f32, path.z);
+                    //body_nodes[i].position = glm::vec3((40*i) as f32, 10.0 + (20*(i+1)) as f32, 0.0);
+                    body_nodes[i].rotation = glm::vec3(path.roll, path.yaw, path.pitch);
+                    //helicopter_body_node.rotation = glm::vec3(0.0, 3.1415, 0.0);
+    
+                    (*body_nodes[i].children[1]).rotation = glm::vec3(0.0, elapsed * 2.0, 0.0);
+                    (*body_nodes[i].children[2]).rotation = glm::vec3(elapsed * 8.0, 0.0, 0.0);   
 
-                helicopter_main_rotor_node.rotation = glm::vec3(0.0, elapsed * 3.0, 0.0);
-                helicopter_tail_rotor_node.rotation = glm::vec3(elapsed * 5.0, 0.0, 0.0);
+                    // Ensure duration_since doesn't panic
+                    if time_of_last_door_state_change < now {
+                        let time_since_last_door_state_change = now.duration_since(time_of_last_door_state_change).as_secs_f32();
+                        // Open door
+                        
+                        if opening_door[i] {
+                            if (*body_nodes[i].children[0]).position[2] < 2.0 {
+                                (*body_nodes[i].children[0]).position += glm::vec3(0.0, 0.0, time_since_last_door_state_change*0.1);
+                            }
+                            else{
+                                (*body_nodes[i].children[0]).position = glm::vec3(0.0, 0.0, 2.0);
+                            }
+                        }
+                        else{
+                            if (*body_nodes[i].children[0]).position[2] > 0.0 {
+                                (*body_nodes[i].children[0]).position -= glm::vec3(0.0, 0.0, time_since_last_door_state_change*0.1);
+                            }
+                            else{
+                                (*body_nodes[i].children[0]).position = glm::vec3(0.0, 0.0, 0.0);
+                            }
+                        }
+                        
+                    }
+
+
+
+
+                }
 
                 update_node_transformations(&mut lunar_node, &glm::identity());
 
