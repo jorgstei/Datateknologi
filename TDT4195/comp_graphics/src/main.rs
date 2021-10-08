@@ -57,8 +57,8 @@ unsafe fn VAO_setup(coords: &Vec<f32>, indices: &Vec<u32>, colors: &Vec<f32>, no
         for j in 0..3{
             combined.push(coords[i*3+j]);
         }
-        for j in 0..3{
-            combined.push(colors[i*3+j]);
+        for j in 0..4{
+            combined.push(colors[i*4+j]);
         }
         for j in 0..3{
             combined.push(normals[i*3+j]);
@@ -74,18 +74,18 @@ unsafe fn VAO_setup(coords: &Vec<f32>, indices: &Vec<u32>, colors: &Vec<f32>, no
 
     println!("VBO is loaded: {}. It has ID: {}", gl::GenBuffers::is_loaded(), vbo_id);
     
-    // Bytes in float * amount of floats per attribute(vertices, colors, normals) * amount of attributes
-    let stride = 4*3*3;
+    // Bytes in float * amount of floats per attribute(vertices, colors, normals) * amount of attributes + 1 because alpha
+    let stride = 4*3*3+4;
     // VertexAttrib for vertices
     gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, stride, ptr::null());
     gl::EnableVertexAttribArray(0);
 
     // VertexAttrib for colors
-    gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, stride, offset::<f32>(3));
+    gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, stride, offset::<f32>(3));
     gl::EnableVertexAttribArray(1);
 
     // VertexAttrib for normals
-    gl::VertexAttribPointer(4, 3, gl::FLOAT, gl::FALSE, stride, offset::<f32>(6));
+    gl::VertexAttribPointer(4, 3, gl::FLOAT, gl::FALSE, stride, offset::<f32>(7));
     gl::EnableVertexAttribArray(4);
 
     // Index buffer
@@ -209,6 +209,7 @@ fn main() {
         //let vao_id = unsafe { VAO_setup(&vertices, &indices, &colors) };
         let mut root_node = SceneNode::new();
         const n_of_helicopters: usize = 5;
+        let mut movement_speed = 1.0;
 
         let lunar_vao_id = unsafe { VAO_setup(&lunar_surface.vertices, &lunar_surface.indices, &lunar_surface.colors, &lunar_surface.normals) };
         let mut lunar_node = SceneNode::from_vao(lunar_vao_id, lunar_surface.indices.len() as i32);
@@ -382,6 +383,13 @@ fn main() {
                                 }     
                             }
                         },
+                        VirtualKeyCode::N => {
+                            movement_speed = movement_speed * 1.05;
+                        },
+                        VirtualKeyCode::M => {
+                            movement_speed = movement_speed * 0.95;
+                        },
+                        
                         _ => { }
                     }
                 }
@@ -424,7 +432,7 @@ fn main() {
 
                 let combined_transformation =  perspective*vertical_rotation*horizontal_rotation*translate_by_camera_pos;
 
-                let path = toolbox::simple_heading_animation(elapsed);
+                let path = toolbox::simple_heading_animation(elapsed * movement_speed);
                 //println!("Door is opening: {}", opening_door[0]);
                 for i in 0..body_nodes.len() {
                     body_nodes[i].position = glm::vec3(path.x + (40*i) as f32, elapsed.sin() * 10.0 + (20*(i+1)) as f32, path.z);
@@ -439,7 +447,6 @@ fn main() {
                     if time_of_last_door_state_change < now {
                         let time_since_last_door_state_change = now.duration_since(time_of_last_door_state_change).as_secs_f32();
                         // Open door
-                        
                         if opening_door[i] {
                             if (*body_nodes[i].children[0]).position[2] < 2.0 {
                                 (*body_nodes[i].children[0]).position += glm::vec3(0.0, 0.0, time_since_last_door_state_change*0.1);
