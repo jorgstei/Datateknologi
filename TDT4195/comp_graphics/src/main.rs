@@ -74,7 +74,7 @@ unsafe fn VAO_setup(coords: &Vec<f32>, indices: &Vec<u32>, colors: &Vec<f32>, no
 
     println!("VBO is loaded: {}. It has ID: {}", gl::GenBuffers::is_loaded(), vbo_id);
     
-    // Bytes in float * amount of floats per attribute(vertices, colors, normals) * amount of attributes + 1 because alpha
+    // Bytes in float * amount of floats per attribute(vertices, colors, normals) * amount of attributes + 4 because alpha
     let stride = 4*3*3+4;
     // VertexAttrib for vertices
     gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, stride, ptr::null());
@@ -173,11 +173,6 @@ fn main() {
     // Make a reference of this tuple to send to the render thread
     let mouse_delta = Arc::clone(&arc_mouse_delta);
 
-    // Load meshes
-    let lunar_surface = mesh::Terrain::load("./resources/lunarsurface.obj");
-    let helicopter = mesh::Helicopter::load("./resources/helicopter.obj");
-    
-
     // Spawn a separate thread for rendering, so event handling doesn't block rendering
     let render_thread = thread::spawn(move || {
         // Acquire the OpenGL Context and load the function pointers. This has to be done inside of the rendering thread, because
@@ -207,6 +202,10 @@ fn main() {
         }
 
         //let vao_id = unsafe { VAO_setup(&vertices, &indices, &colors) };
+        // Load meshes
+        let lunar_surface = mesh::Terrain::load("./resources/lunarsurface.obj");
+        let helicopter = mesh::Helicopter::load("./resources/helicopter.obj");
+        
         let mut root_node = SceneNode::new();
         const n_of_helicopters: usize = 5;
         let mut movement_speed = 1.0;
@@ -438,7 +437,7 @@ fn main() {
                     body_nodes[i].position = glm::vec3(path.x + (40*i) as f32, elapsed.sin() * 10.0 + (20*(i+1)) as f32, path.z);
                     //body_nodes[i].position = glm::vec3((40*i) as f32, 10.0 + (20*(i+1)) as f32, 0.0);
                     body_nodes[i].rotation = glm::vec3(path.roll, path.yaw, path.pitch);
-                    //helicopter_body_node.rotation = glm::vec3(0.0, 3.1415, 0.0);
+                    //helicopter_body_node.rotation = glm::vec3(0.0, 3.14159265, 0.0);
     
                     (*body_nodes[i].children[1]).rotation = glm::vec3(0.0, elapsed * 2.0, 0.0);
                     (*body_nodes[i].children[2]).rotation = glm::vec3(elapsed * 8.0, 0.0, 0.0);   
