@@ -107,9 +107,8 @@ class MultiAgentSearchAgent(Agent):
         self.depth = int(depth)
 
 class MinimaxAgent(MultiAgentSearchAgent):
-    search_depth = 5
+    search_depth = 9
     n_ghosts = 0
-    agent_num = 0
 
 
     def getAction(self, gameState):
@@ -124,7 +123,7 @@ class MinimaxAgent(MultiAgentSearchAgent):
         Returns whether or not the game state is a losing state
         """
         self.n_ghosts = gameState.getNumAgents() - 1
-        print(self.n_ghosts)
+        
         
         best_score, best_move = self.minimax(gameState, self.search_depth, True)
         print(best_score, best_move)
@@ -137,11 +136,11 @@ class MinimaxAgent(MultiAgentSearchAgent):
                 return [scoreEvaluationFunction(state), None]
             
             if(is_maximizer):
-                print("pacman can do", state.getLegalActions(0))
+                #print("pacman can do", state.getLegalActions(0))
                 curr_val = -999999
                 best_move = None
                 # Maximizing layer, so we know we're pacman
-                self.agent_num = 0
+                agent_num = 0
                 for possible_move in state.getLegalActions(0):
                     move_val = self.minimax(state.generateSuccessor(0, possible_move), depth-1, False)[0]
                     if(move_val > curr_val):
@@ -154,16 +153,17 @@ class MinimaxAgent(MultiAgentSearchAgent):
                 curr_val = 999999
                 best_move = None
                 # Figure out which ghost we are
-                self.agent_num = self.search_depth % (self.n_ghosts+1)
-                print("ghost", self.agent_num, "can do", state.getLegalActions(self.agent_num))
-                for possible_move in state.getLegalActions(self.agent_num):
-                    if(self.agent_num == self.n_ghosts):
+                agent_num = (self.search_depth-depth) % (self.n_ghosts+1)
+                legal_moves = state.getLegalActions(agent_num)
+                for possible_move in legal_moves:
+                    if(agent_num == self.n_ghosts):
                         # Next layer is maximizing (pacman)
-                        move_val = self.minimax(state.generateSuccessor(self.agent_num, possible_move), depth-1, True)[0]
+                        #print("checking next max layer", agent_num, self.n_ghosts, "with move", possible_move, "from list: ", legal_moves)
+                        move_val = self.minimax(state.generateSuccessor(agent_num, possible_move), depth-1, True)[0]
                     else:
                         # Next layer is still minimizing (another ghost)
-                        print("checking next min layer", self.agent_num, self.n_ghosts)
-                        move_val = self.minimax(state.generateSuccessor(self.agent_num, possible_move), depth-1, False)[0]
+                        #print("checking next min layer", agent_num, self.n_ghosts, "with move", possible_move, "from list: ", legal_moves)
+                        move_val = self.minimax(state.generateSuccessor(agent_num, possible_move), depth-1, False)[0]
                     
                     if(move_val < curr_val):
                         curr_val = move_val
