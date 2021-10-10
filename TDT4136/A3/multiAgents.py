@@ -140,6 +140,7 @@ class MinimaxAgent(MultiAgentSearchAgent):
                 print("pacman can do", state.getLegalActions(0))
                 curr_val = -999999
                 best_move = None
+                # Maximizing layer, so we know we're pacman
                 self.agent_num = 0
                 for possible_move in state.getLegalActions(0):
                     move_val = self.minimax(state.generateSuccessor(0, possible_move), depth-1, False)[0]
@@ -152,8 +153,8 @@ class MinimaxAgent(MultiAgentSearchAgent):
             else:
                 curr_val = 999999
                 best_move = None
-                self.agent_num += 1
-                print("asd",self.agent_num)
+                # Figure out which ghost we are
+                self.agent_num = self.search_depth % (self.n_ghosts+1)
                 print("ghost", self.agent_num, "can do", state.getLegalActions(self.agent_num))
                 for possible_move in state.getLegalActions(self.agent_num):
                     if(self.agent_num == self.n_ghosts):
