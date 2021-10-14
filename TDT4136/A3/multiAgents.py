@@ -107,7 +107,7 @@ class MultiAgentSearchAgent(Agent):
         self.depth = int(depth)
 
 class MinimaxAgent(MultiAgentSearchAgent):
-    search_depth = 9
+    search_depth = 10
     n_ghosts = 0
 
 
@@ -125,32 +125,36 @@ class MinimaxAgent(MultiAgentSearchAgent):
         self.n_ghosts = gameState.getNumAgents() - 1
         
         
-        best_score, best_move = self.minimax(gameState, self.search_depth, True)
-        print(best_score, best_move)
+        best_score, best_move = self.minimax(gameState, self.search_depth, True, -9999999, 9999999)
+        #print(best_score, best_move)
         return best_move
         
-        #agent num is just wrong..
-        #not sure how to fix yet
-    def minimax(self, state, depth, is_maximizer):
+
+    def minimax(self, state, depth, is_maximizer, alpha, beta):
             if(depth == 0 or state.isWin() or state.isLose()):
                 return [scoreEvaluationFunction(state), None]
             
             if(is_maximizer):
                 #print("pacman can do", state.getLegalActions(0))
-                curr_val = -999999
+                curr_val = -9999999
                 best_move = None
                 # Maximizing layer, so we know we're pacman
                 agent_num = 0
                 for possible_move in state.getLegalActions(0):
-                    move_val = self.minimax(state.generateSuccessor(0, possible_move), depth-1, False)[0]
+                    move_val = self.minimax(state.generateSuccessor(0, possible_move), depth-1, False, alpha, beta)[0]
+                    
                     if(move_val > curr_val):
                         curr_val = move_val
                         best_move = possible_move
 
+                    alpha = max(alpha, move_val)
+                    if(beta <= alpha):
+                        break
+
                 return [curr_val, best_move]
             # Minimizing layer, ghost
             else:
-                curr_val = 999999
+                curr_val = 9999999
                 best_move = None
                 # Figure out which ghost we are
                 agent_num = (self.search_depth-depth) % (self.n_ghosts+1)
@@ -158,17 +162,26 @@ class MinimaxAgent(MultiAgentSearchAgent):
                 for possible_move in legal_moves:
                     if(agent_num == self.n_ghosts):
                         # Next layer is maximizing (pacman)
-                        #print("checking next max layer", agent_num, self.n_ghosts, "with move", possible_move, "from list: ", legal_moves)
-                        move_val = self.minimax(state.generateSuccessor(agent_num, possible_move), depth-1, True)[0]
+                        move_val = self.minimax(state.generateSuccessor(agent_num, possible_move), depth-1, True, alpha, beta)[0]
+                        if(move_val < curr_val):
+                            curr_val = move_val
+                            best_move = possible_move
+
+                        beta = min(beta, move_val)
+                        if(beta <= alpha):
+                            break
                     else:
                         # Next layer is still minimizing (another ghost)
                         #print("checking next min layer", agent_num, self.n_ghosts, "with move", possible_move, "from list: ", legal_moves)
-                        move_val = self.minimax(state.generateSuccessor(agent_num, possible_move), depth-1, False)[0]
-                    
-                    if(move_val < curr_val):
-                        curr_val = move_val
-                        best_move = possible_move
-                        
+                        move_val = self.minimax(state.generateSuccessor(agent_num, possible_move), depth-1, False, alpha, beta)[0]
+                        if(move_val < curr_val):
+                            curr_val = move_val
+                            best_move = possible_move
+
+                        beta = min(beta, move_val)
+                        if(beta <= alpha):
+                            break
+                           
                 return [curr_val, best_move]
 
         
