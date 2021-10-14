@@ -12,6 +12,14 @@
 # Pieter Abbeel (pabbeel@cs.berkeley.edu).
 
 
+
+# HOW TO RUN
+# python pacman.py -p MinimaxAgent
+# python autograder.py -q q2 --no-graphics
+
+# python pacman.py -p AlphaBetaAgent
+# python autograder.py -q q3 --no-graphics
+
 from util import manhattanDistance
 from game import Directions
 import random, util
@@ -101,7 +109,7 @@ class MultiAgentSearchAgent(Agent):
     is another abstract class.
     """
 
-    def __init__(self, evalFn = 'scoreEvaluationFunction', depth = '2'):
+    def __init__(self, evalFn = 'scoreEvaluationFunction', depth = '4'):
         self.index = 0 # Pacman is always agent index 0
         self.evaluationFunction = util.lookup(evalFn, globals())
         self.depth = int(depth)
