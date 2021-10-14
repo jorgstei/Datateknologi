@@ -107,31 +107,68 @@ class MultiAgentSearchAgent(Agent):
         self.depth = int(depth)
 
 class MinimaxAgent(MultiAgentSearchAgent):
-    search_depth = 10
     n_ghosts = 0
 
-
     def getAction(self, gameState):
-        """
-        gameState.getNumAgents():
-        Returns the total number of agents in the game
 
-        gameState.isWin():
-        Returns whether or not the game state is a winning state
-
-        gameState.isLose():
-        Returns whether or not the game state is a losing state
-        """
         self.n_ghosts = gameState.getNumAgents() - 1
         
-        
-        best_score, best_move = self.minimax(gameState, self.search_depth, True, -9999999, 9999999)
-        #print(best_score, best_move)
+        def minimax(state, depth, is_maximizer):
+            # Because these guys apparently like fake depth, self.depth is not the amount of layers
+            # But the amount of times we need to do n layers
+            if(depth == self.depth*(self.n_ghosts+1) or state.isWin() or state.isLose()):
+                return [self.evaluationFunction(state), None]
+            
+            if(is_maximizer):
+                #print("pacman can do", state.getLegalActions(0))
+                curr_val = -9999999
+                best_move = None
+                # Maximizing layer, so we know we're pacman
+                agent_num = 0
+                for possible_move in state.getLegalActions(0):
+                    move_val = minimax(state.generateSuccessor(0, possible_move), depth+1, False)[0]
+                    
+                    if(move_val > curr_val):
+                        curr_val = move_val
+                        best_move = possible_move
+
+                return [curr_val, best_move]
+            # Minimizing layer, ghost
+            else:
+                curr_val = 9999999
+                best_move = None
+                # Figure out which ghost we are
+                agent_num = (self.depth-(self.depth-depth)) % (self.n_ghosts+1)
+                legal_moves = state.getLegalActions(agent_num)
+                for possible_move in legal_moves:
+                    if(agent_num == self.n_ghosts):
+                        # Next layer is maximizing (pacman)
+                        move_val = minimax(state.generateSuccessor(agent_num, possible_move), depth+1, True)[0]
+                        if(move_val < curr_val):
+                            curr_val = move_val
+                            best_move = possible_move
+
+                    else:
+                        # Next layer is still minimizing (another ghost)
+                        move_val = minimax(state.generateSuccessor(agent_num, possible_move), depth+1, False)[0]
+                        if(move_val < curr_val):
+                            curr_val = move_val
+                            best_move = possible_move
+                        
+                return [curr_val, best_move]
+
+        best_score, best_move = minimax(gameState, 0, True)
         return best_move
         
 
-    def minimax(self, state, depth, is_maximizer, alpha, beta):
-            if(depth == 0 or state.isWin() or state.isLose()):
+class AlphaBetaAgent(MultiAgentSearchAgent):
+    n_ghosts = 0
+
+    def getAction(self, gameState):
+        self.n_ghosts = gameState.getNumAgents() - 1
+
+        def minimax_ab(state, depth, is_maximizer, alpha, beta):
+            if(depth == self.depth*(self.n_ghosts+1) or state.isWin() or state.isLose()):
                 return [scoreEvaluationFunction(state), None]
             
             if(is_maximizer):
@@ -141,14 +178,14 @@ class MinimaxAgent(MultiAgentSearchAgent):
                 # Maximizing layer, so we know we're pacman
                 agent_num = 0
                 for possible_move in state.getLegalActions(0):
-                    move_val = self.minimax(state.generateSuccessor(0, possible_move), depth-1, False, alpha, beta)[0]
+                    move_val = minimax_ab(state.generateSuccessor(0, possible_move), depth+1, False, alpha, beta)[0]
                     
                     if(move_val > curr_val):
                         curr_val = move_val
                         best_move = possible_move
 
                     alpha = max(alpha, move_val)
-                    if(beta <= alpha):
+                    if(beta < alpha):
                         break
 
                 return [curr_val, best_move]
@@ -157,48 +194,34 @@ class MinimaxAgent(MultiAgentSearchAgent):
                 curr_val = 9999999
                 best_move = None
                 # Figure out which ghost we are
-                agent_num = (self.search_depth-depth) % (self.n_ghosts+1)
+                agent_num = (self.depth-(self.depth-depth)) % (self.n_ghosts+1)
                 legal_moves = state.getLegalActions(agent_num)
                 for possible_move in legal_moves:
                     if(agent_num == self.n_ghosts):
                         # Next layer is maximizing (pacman)
-                        move_val = self.minimax(state.generateSuccessor(agent_num, possible_move), depth-1, True, alpha, beta)[0]
+                        move_val = minimax_ab(state.generateSuccessor(agent_num, possible_move), depth+1, True, alpha, beta)[0]
                         if(move_val < curr_val):
                             curr_val = move_val
                             best_move = possible_move
 
                         beta = min(beta, move_val)
-                        if(beta <= alpha):
+                        if(beta < alpha):
                             break
                     else:
                         # Next layer is still minimizing (another ghost)
-                        #print("checking next min layer", agent_num, self.n_ghosts, "with move", possible_move, "from list: ", legal_moves)
-                        move_val = self.minimax(state.generateSuccessor(agent_num, possible_move), depth-1, False, alpha, beta)[0]
+                        move_val = minimax_ab(state.generateSuccessor(agent_num, possible_move), depth+1, False, alpha, beta)[0]
                         if(move_val < curr_val):
                             curr_val = move_val
                             best_move = possible_move
 
                         beta = min(beta, move_val)
-                        if(beta <= alpha):
+                        if(beta < alpha):
                             break
                            
                 return [curr_val, best_move]
 
-        
-    
-    
-
-class AlphaBetaAgent(MultiAgentSearchAgent):
-    """
-    Your minimax agent with alpha-beta pruning (question 3)
-    """
-
-    def getAction(self, gameState):
-        """
-        Returns the minimax action using self.depth and self.evaluationFunction
-        """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        best_score, best_move = minimax_ab(gameState, 0, True, -9999999, 9999999)
+        return best_move
 
 class ExpectimaxAgent(MultiAgentSearchAgent):
     """
