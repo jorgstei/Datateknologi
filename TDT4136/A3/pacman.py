@@ -86,7 +86,7 @@ class GameState:
         return tmp
     getAndResetExplored = staticmethod(getAndResetExplored)
 
-    def getLegalActions(self, agentIndex=0):
+    def getLegalActions(self, agentIndex):
         """
         Returns the legal actions for the agent specified.
         """
