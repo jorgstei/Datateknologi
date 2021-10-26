@@ -41,7 +41,7 @@ class GUI():
         
         print("Len path:", len(self.astar.final_path))
         running = True
-        run_speed = 20
+        run_speed = 1
         counter = 0
         while running:
             for event in pg.event.get():
