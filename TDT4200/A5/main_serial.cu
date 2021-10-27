@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <math.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
+
 
 typedef struct pixel_struct {
 	unsigned char r;
@@ -29,7 +31,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 //--------------------------bilinear interpolation--------------------------------------------------
 //--------------------------------------------------------------------------------------------------
 // TODO 2 b: Change to device function
-void bilinear(pixel* Im, float row, float col, pixel* pix, int width, int height)
+__device__ void bilinear(pixel* Im, float row, float col, pixel* pix, int width, int height)
 {
 	int cm, cn, fm, fn;
 	double alpha, beta;
@@ -56,23 +58,11 @@ void bilinear(pixel* Im, float row, float col, pixel* pix, int width, int height
 	pix->a = 255;
 }
 //---------------------------------------------------------------------------
+
 // TODO 2 a: Change to kernel
-void bilinear_kernel(pixel* d_pixels_in, pixel* d_pixels_out, 
-			int in_width, int in_height, 
-			int out_width, int out_height) {
+__global__ void bilinear_kernel(pixel* d_pixels_in, pixel* d_pixels_out, int in_width, int in_height, int out_width, int out_height, int x_scale, int y_scale) {
 	// TODO 2 c - Parallelize the kernel
-	for(int i = 0; i < out_height; i++) {
-		for(int j = 0; j < out_width; j++) {
-			pixel new_pixel;
-
-			float row = i * (in_height-1) / (float)out_height;
-			float col = j * (in_width-1) / (float)out_width;
-
-			bilinear(d_pixels_in, row, col, &new_pixel, in_width, in_height);
-
-			d_pixels_out[i*out_width+j] = new_pixel;
-		}
-	}
+	printf("Stuff %d %d %d", threadIdx.x, blockIdx.x, blockDim.x);
 }
 
 int main(int argc, char** argv)
@@ -101,44 +91,53 @@ int main(int argc, char** argv)
 	
 	pixel* d_pixels_in;
 	pixel* d_pixels_out;
+
 //TODO 1 a - cuda malloc
+printf("Mallocing cuda\n");
+cudaMalloc(&d_pixels_in, in_width*in_height*sizeof(pixel)); 
+cudaMalloc(&d_pixels_out, in_width*in_height*sizeof(pixel));
 
 //TODO END
 
-   	cudaEvent_t start_transfer, stop_transfer;
-       	cudaEventCreate(&start_transfer);
-        cudaEventCreate(&stop_transfer);
-	cudaEventRecord(start_transfer);
+cudaEvent_t start_transfer, stop_transfer;
+cudaEventCreate(&start_transfer);
+cudaEventCreate(&stop_transfer);
+cudaEventRecord(start_transfer);
+
 //TODO 1 b - cuda memcpy
+printf("Memcpy cuda\n");
+cudaMemcpy(d_pixels_in, h_pixels_in, in_width*in_height*sizeof(pixel), cudaMemcpyHostToDevice);
+cudaMemcpy(d_pixels_out, h_pixels_out, in_width*in_height*sizeof(pixel), cudaMemcpyHostToDevice);
 
 //TODO END
 
 // TODO 1 c - block size and grid size. gridSize should depend on the blockSize and output dimensions.
-	dim3 blockSize(1,1);
-	dim3 gridSize(1,1);
+
+int blocksz = 32;
+dim3 blockSize(blocksz, blocksz);
+dim3 gridSize(ceil(in_width / blocksz), ceil(out_width / blocksz));
 // TODO END
 
-   	cudaEvent_t start, stop;
-       	cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-
-	cudaEventRecord(start);
+cudaEvent_t start, stop;
+cudaEventCreate(&start);
+cudaEventCreate(&stop);
+cudaEventRecord(start);
 
 //TODO 2 a - GPU computation
 // Change the function call so that it becomes a kernel call. Change the input and output pixel variables to be device-side instead of host-side.
-        bilinear_kernel(h_pixels_in, h_pixels_out, in_width, in_height, out_width, out_height);
+bilinear_kernel<<<gridSize, blockSize>>>(d_pixels_in, d_pixels_out, in_width, in_height, out_width, out_height, scale_x, scale_y);
 // TODO END
 
-	cudaEventRecord(stop);
-	cudaDeviceSynchronize();
-	cudaError_t err = cudaGetLastError();
-	if (err != cudaSuccess)
-		printf("%s\n", cudaGetErrorString(err));
-	cudaDeviceSynchronize();
-	cudaEventSynchronize(stop);
-	float spentTime = 0.0;
-	cudaEventElapsedTime(&spentTime, start, stop);
-	printf("Time spent %.3f seconds\n", spentTime/1000);
+cudaEventRecord(stop);
+cudaDeviceSynchronize();
+cudaError_t err = cudaGetLastError();
+if (err != cudaSuccess)
+	printf("%s\n", cudaGetErrorString(err));
+cudaDeviceSynchronize();
+cudaEventSynchronize(stop);
+float spentTime = 0.0;
+cudaEventElapsedTime(&spentTime, start, stop);
+printf("Time spent %.3f seconds\n", spentTime/1000);
 
 //TODO 3 a - Copy the device-side data into the host-side variable
 
