@@ -26,7 +26,7 @@ print(f"The tensor containing the images has shape: {example_images.shape} (batc
       f"The maximum value in the image is {example_images.max()}, minimum: {example_images.min()}", sep="\n\t")
 
 
-def create_model():
+def create_task_a_model():
     """
         Initializes the mode. Edit the code below if you would like to change the model.
     """
@@ -39,8 +39,24 @@ def create_model():
     model = utils.to_cuda(model)
     return model
 
+def create_model():
+    """
+        Initializes the mode. Edit the code below if you would like to change the model.
+    """
+    model = nn.Sequential(
+        nn.Flatten(),  # Flattens the image from shape (batch_size, C, Height, width) to (batch_size, C*height*width)
+        nn.Linear(28*28*1, 64),
+        nn.ReLU(),
+        nn.Linear(64, 10)
+        # No need to include softmax, as this is already combined in the loss function
+    )
+    # Transfer model to GPU memory if a GPU is available
+    model = utils.to_cuda(model)
+    return model
+
 
 model = create_model()
+#print("model:\n", model)
 
 
 # Test if the model is able to do a single forward pass
@@ -52,8 +68,8 @@ assert output.shape == expected_shape,    f"Expected shape: {expected_shape}, bu
 
 
 # Hyperparameters
-#learning_rate = .0192
-learning_rate = 1.0
+learning_rate = .0192
+#learning_rate = 1.0
 num_epochs = 5
 
 
@@ -62,7 +78,6 @@ loss_function = torch.nn.CrossEntropyLoss()
 
 # Define optimizer (Stochastic Gradient Descent)
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-
 
 trainer = Trainer(
     model=model,
@@ -75,18 +90,18 @@ trainer = Trainer(
 train_loss_dict, test_loss_dict = trainer.train(num_epochs)
 
 weights = list(model.children())[1].weight.cpu().data
-print("Weight:\n",weights)
-print(len(weights), len(weights[0]))
-'''
+#print("Weight:\n",weights)
+#print(len(weights), len(weights[0]))
+
+# Print weights of each digit
 for digit in range(10):
     plt.title(f"Digit: {digit}")
     
-    # Normalize data from 0 to 1
     # Reshape to 28x28
     reshaped = np.reshape(weights[digit], (28, 28))
     plt.imshow(reshaped, interpolation="nearest", cmap='gray')
     plt.show()
-'''
+
 
 
 
@@ -96,7 +111,7 @@ for digit in range(10):
 utils.plot_loss(train_loss_dict, label="Train Loss")
 utils.plot_loss(test_loss_dict, label="Test Loss")
 # Limit the y-axis of the plot (The range should not be increased!)
-plt.ylim([0, 150])
+plt.ylim([0, 1])
 plt.legend()
 plt.xlabel("Global Training Step")
 plt.ylabel("Cross Entropy Loss")
@@ -111,7 +126,7 @@ print(f"Final Test loss: {final_loss}. Final Test accuracy: {final_acc}")
 
 
 # You can delete the remaining code of this notebook, as this is just to illustrate one method to solve the assignment tasks.
-'''
+
 
 # This example code is here to illustrate how you can plot two different models to compare them.
 # Lets change a small part of our model: the number of epochs trained (NOTE, use 5 epochs for your experiments in the assignment.)
@@ -121,16 +136,15 @@ torch.random.manual_seed(0)
 np.random.seed(0)
 
 
-dataloader_train, dataloader_test = dataloaders.load_dataset(
-    batch_size, image_transform)
-model = create_model()
+dataloader_train, dataloader_test = dataloaders.load_dataset(batch_size, image_transform)
+model = create_task_a_model()
 
 learning_rate = .0192
-num_epochs = 6
+num_epochs = 5
 
 # Redefine optimizer, as we have a new model.
-optimizer = torch.optim.SGD(model.parameters(),
-                            lr=learning_rate)
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
 trainer = Trainer(
     model=model,
     dataloader_train=dataloader_train,
@@ -139,19 +153,18 @@ trainer = Trainer(
     loss_function=loss_function,
     optimizer=optimizer
 )
-train_loss_dict_6epochs, test_loss_dict_6epochs = trainer.train(num_epochs)
+
+train_loss_dict_task_a, test_loss_dict_task_a = trainer.train(num_epochs)
 num_epochs = 5
 
 
 # We can now plot the two models against eachother
 
 # Plot loss
-utils.plot_loss(train_loss_dict_6epochs,
-                label="Train Loss - Model trained with 6 epochs")
-utils.plot_loss(test_loss_dict_6epochs,
-                label="Test Loss - Model trained with 6 epochs")
-utils.plot_loss(train_loss_dict, label="Train Loss - Original model")
-utils.plot_loss(test_loss_dict, label="Test Loss - Original model")
+utils.plot_loss(train_loss_dict_task_a, label="Train Loss - Model trained with task a")
+utils.plot_loss(test_loss_dict_task_a, label="Test Loss - Model trained with task a")
+utils.plot_loss(train_loss_dict, label="Train Loss - Original model (RELU)")
+utils.plot_loss(test_loss_dict, label="Test Loss - Original model (RELU)")
 # Limit the y-axis of the plot (The range should not be increased!)
 plt.ylim([0, 1])
 plt.legend()
@@ -164,5 +177,5 @@ plt.show()
 torch.save(model.state_dict(), "saved_model.torch")
 final_loss, final_acc = utils.compute_loss_and_accuracy(
     dataloader_test, model, loss_function)
-print(f"Final Test loss: {final_loss}. Final Test accuracy: {final_acc}")
-'''
+print(f"Task a: Final Test loss: {final_loss}. Final Test accuracy: {final_acc}")
+
