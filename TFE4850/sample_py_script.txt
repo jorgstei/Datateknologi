@@ -1,0 +1,4 @@
+for i in range(7):
+    aktiver("start")
+    aktiver("end")
+    forsinkelse("0.1s")

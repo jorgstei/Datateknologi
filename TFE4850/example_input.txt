@@ -1,0 +1,9 @@
+drive(100)
+rotate(50)
+vroom(10)
+2+2
+print("Last line of script")
+if(2+1==4):
+    print("if 2+2 is 4 this is printed")
+    rotate(40)
+endif
