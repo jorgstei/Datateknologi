@@ -83,8 +83,7 @@ int main(int argc, char** argv)
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	printf("Hello my rank is %d\n", rank);
 	//TODO END
-
-
+	
 	pixel* pixels_in;
 
 	int in_width;

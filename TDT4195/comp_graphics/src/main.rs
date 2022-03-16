@@ -124,7 +124,6 @@ unsafe fn update_node_transformations(node: &mut scene_graph::SceneNode, transfo
     );
     // Translate back
     let translation_back = glm::translation(&node.reference_point);
-
     let translate_position = glm::translation(&glm::vec3(node.position[0], node.position[1], node.position[2]));
     
     //println!("Rotation of node with {} children is {} {}", node.children.len(), node.rotation, node.rotation[0]);
